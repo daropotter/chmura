@@ -85,8 +85,12 @@ Chmura is opinionated, and the opinions are consistent across every feature:
 
 ## Where to go next
 
+Start with the **[Quickstart](getting-started/quickstart.md)** to deploy an app
+locally in about a minute, then read on:
+
 <div class="grid cards" markdown>
 
+- **[Install](getting-started/install.md)** — the tools and how to get them.
 - **[Domain model](concepts/domain-model.md)** — the pieces and how they fit.
 - **[CLI contract](cli.md)** — addresses, flags, output, exit codes.
 - **[Networking & endpoints](networking.md)** — ports, endpoints, TLS, routing.

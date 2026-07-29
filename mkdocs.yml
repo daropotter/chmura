@@ -32,11 +32,18 @@ markdown_extensions:
       permalink: true
   - pymdownx.details
   - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
   - pymdownx.highlight:
       anchor_linenums: true
 
 nav:
   - Home: index.md
+  - Getting started:
+      - Install: getting-started/install.md
+      - Quickstart: getting-started/quickstart.md
+      - First steps: getting-started/first-steps.md
+      - Examples: getting-started/examples.md
   - Concepts:
       - Domain model: concepts/domain-model.md
   - CLI contract: cli.md
