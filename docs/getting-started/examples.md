@@ -130,8 +130,8 @@ applications:
         path: /var/lib/data
     deploy:
       strategy:
-        replace: stop-first   # exclusive volume: one runtime at a time
-        floor: 2              # keep 2 of 3 ready during a rollout
+        replace: swap    # exclusive volume: one runtime at a time
+        floor: 2         # keep 2 of 3 ready during a rollout
 
 volumes:
   data:

@@ -189,10 +189,10 @@ the same readiness the [edge proxy and load balancer](networking.md) use.
 Replacing instances with a new revision happens in one of two modes:
 
 ```text
-surge         a new instance starts and becomes ready before the old one stops;
-              the ready count never drops
-stop-first    the old instance stops before the new one starts;
-              the ready count drops by the batch size
+surge   a new instance starts and becomes ready before the old one stops;
+        the ready count never drops
+swap    the old instance stops before the new one starts;
+        the ready count drops by the batch size
 ```
 
 ```yaml
@@ -204,18 +204,18 @@ deploy:
 The mode is **declared, not inferred**. Chmura does not pick it from your volumes
 or anything else — it checks whether the declared mode is feasible and refuses
 the plan if not. `surge` is the default because it alone takes nothing away.
-Where it is infeasible, the plan says so and requires an explicit `stop-first`:
+Where it is infeasible, the plan says so and requires an explicit `swap`:
 lowering the ready count during a rollout should be visible in the manifest and
 in review, not inferred silently.
 
-### Volume handover forces stop-first
+### Volume handover forces swap
 
 A volume with `attachment: exclusive` can be attached to one runtime at a time,
 so the old runtime must release it before the new one starts. An app with such a
-volume can only replace `stop-first`. Declaring `replace: surge` with an
+volume can only replace `swap`. Declaring `replace: surge` with an
 exclusive volume is a validation error that tells you exactly how to resolve it.
 There is no separate `handover` field — the old `handover: exclusive` is just
-`replace: stop-first`. See [Storage](storage.md).
+`replace: swap`. See [Storage](storage.md).
 
 ### Batches
 
@@ -239,13 +239,13 @@ volumes, and the cluster's physical capacity. The plan must reconcile them
 **before** the first change — any contradiction is a plan error that names the
 tension, never a surprise mid-rollout.
 
-`instances.min` describes steady state. A stop-first rollout *temporarily* lowers
+`instances.min` describes steady state. A swap rollout *temporarily* lowers
 the ready count, and that needs its own explicit consent — `floor`:
 
 ```yaml
 deploy:
   strategy:
-    replace: stop-first
+    replace: swap
     floor: 1
 ```
 
@@ -254,8 +254,8 @@ deploy:
 downtime and is required by `mode: all-at-once`.
 
 ```text
-stop-first:   target − batch ≥ floor
-surge:        target + batch ≤ instances.max
+swap:    target − batch ≥ floor
+surge:   target + batch ≤ instances.max
 ```
 
 The most common corner case — `min: 2`, `preferred: 2`, an exclusive volume —
@@ -264,7 +264,7 @@ cannot roll at all without a choice, and the plan says so instead of guessing:
 ```text
 Error: rolling update of application "api" cannot proceed.
 
-  replace:   stop-first (volume "data" is attachment: exclusive)
+  replace:   swap (volume "data" is attachment: exclusive)
   instances: min 2, target 2, max 4
   floor:     2 (default: instances.min)
   batch:     1
