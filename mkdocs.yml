@@ -49,6 +49,7 @@ nav:
   - CLI contract: cli.md
   - Networking & endpoints: networking.md
   - Deployment & rollout: deployment.md
+  - Storage & volumes: storage.md
   - Observability: observability.md
   - Architecture: architecture.md
   - Local dev: local-dev.md
