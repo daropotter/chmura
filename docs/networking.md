@@ -45,6 +45,10 @@ Everything downstream refers to a port **by name**, never by number. Changing
 | `tcp` | L4 | an opaque byte stream |
 | `udp` | L4 | datagrams |
 
+**L7** (layer 7) means application-aware: Chmura can read the HTTP inside the
+stream — hostnames, headers — and route on them. **L4** (layer 4) means a raw
+transport stream that Chmura forwards without understanding its contents.
+
 The L7/L4 distinction is not cosmetic. It decides whether a port can be
 multiplexed by hostname — and therefore whether an endpoint over it can share a
 listener with other projects. See [uniqueness](#uniqueness-and-conflicts).
@@ -119,6 +123,28 @@ endpoints:
 
 Both listen on 443 and do not collide, because they differ by hostname. Why that
 is allowed is the subject of [uniqueness](#uniqueness-and-conflicts).
+
+### Values that vary by environment
+
+The same manifest deploys to staging and production, so a hostname that differs
+between them should not be hard-coded. An endpoint hostname may reference a
+`var`, resolved from the target space exactly like an environment value —
+project-then-space, with the same fail-fast check and visible provenance:
+
+```yaml
+listen:
+  protocol: https
+  port: 443
+  hostname:
+    var: public-hostname
+```
+
+Only `var` is allowed here, never `secret`: a hostname is not a secret, and a
+manifest field is resolved at *plan* time to build the deployed spec, not
+injected into the app at runtime. Chmura deliberately stops short of full
+templating — the manifest stays something you can read and understand without a
+values file, and only genuinely deployment-varying identifiers (a hostname
+today) accept a reference.
 
 ## Ingress
 
@@ -248,6 +274,11 @@ question: who ends the encryption.
 | `terminate` | Chmura decrypts the traffic and holds the certificate |
 | `passthrough` | Chmura does not decrypt; the application holds the certificate |
 
+These are the standard load-balancer terms *TLS termination* and *TLS
+passthrough*. With `terminate`, the encryption ends at Chmura's edge — it opens
+the traffic, so it needs the certificate. With `passthrough`, Chmura relays the
+sealed bytes untouched, and only the application can open them.
+
 `http` has no `tls` block — it is explicitly unencrypted. `tcp` and `udp` have
 none either: on an exclusive L4 port, any TLS is entirely the application's
 business and Chmura never sees it.
@@ -310,9 +341,10 @@ existence check at deploy time.
 ### How a request flows
 
 The declarations above describe intent. Here is what happens when a request
-arrives. Traffic is handled by the **edge layer** — a component at the cluster
-boundary, realized by the execution engine and invisible in the user model. For
-an HTTPS request with `terminate`:
+arrives. Traffic is handled by the **edge proxy** — the reverse proxy at the cluster
+boundary that terminates TLS, routes by host or SNI, and load-balances across
+ready instances. It is realized by the execution engine and invisible in the
+user model. For an HTTPS request with `terminate`:
 
 ```text
 1. The client connects to the ingress address on the endpoint's port (e.g. 443).
@@ -327,8 +359,8 @@ an HTTPS request with `terminate`:
 4. terminate:   decrypts with the endpoint's certificate
    passthrough: forwards the bytes without decrypting
 
-5. It picks a ready instance of the target application,
-   skips the not-ready ones, and balances the traffic.
+5. It load-balances across the target application's ready instances,
+   skipping the not-ready ones (see below).
 
 6. It connects to the instance using the target port's protocol.
 ```
@@ -339,9 +371,67 @@ readiness state, one mechanism for both — see [Deployment](deployment.md).
 
 ### Renewal never touches the application
 
-For both sources, the certificate is held by the edge layer, not the instance.
+For both sources, the certificate is held by the edge proxy, not the instance.
 So renewal — automatic, or by replacing the secret — is not a manifest change:
 it creates no revision and restarts nothing.
+
+## Service discovery and load balancing
+
+The sections above leave two questions open: how does one application reach
+another *inside* Chmura, and how is traffic spread across an application's
+instances? Both are answered by built-in machinery — you do not stand up a
+separate service registry or load balancer.
+
+### Internal DNS
+
+Every application is reachable inside Chmura by a stable name, without declaring
+anything. The name resolves within the scope its port's visibility allows:
+
+```text
+api           the api application, from within the same project
+api.shop      the api application, from elsewhere in the space
+```
+
+A bare name load-balances across the application's *ready* instances; you connect
+on the port number you need. This internal DNS is entirely separate from the
+external DNS above — Chmura generates it, scopes it by visibility, and it never
+leaves the installation.
+
+For workloads that must address a *specific* instance — a database replica, a
+leader — each stable slot has its own name:
+
+```text
+api-0, api-1, api-2      a specific slot, always the same instance behind it
+```
+
+Per-slot names are what make per-instance volumes useful: `api-0` always resolves
+to the instance that owns `data/0`, across restarts and deploys.
+
+### Load balancing
+
+Balancing traffic across ready instances is built in and always on. It is not an
+optional add-on or an external component — it is *how* both endpoints
+(north–south) and internal names (east–west) reach an application at all.
+
+- **Health-aware.** Only ready instances receive traffic. A not-ready or failing
+  instance is taken out and put back automatically, using the same readiness
+  signal as rollout — see [Deployment](deployment.md).
+- **Round-robin by default**, across the ready set.
+- **Session affinity** is opt-in per endpoint, for workloads that keep
+  per-client state:
+
+    ```yaml
+    endpoints:
+      website:
+        # ...
+        affinity: client-ip     # or: cookie
+    ```
+
+What is *not* in the first version — weighted or canary traffic splitting,
+retries, circuit breaking, outlier ejection — lives in the same edge proxy as a
+future capability. Canary in particular pairs with a future deploy strategy that
+shifts a share of traffic between revisions. Until then, traffic is spread evenly
+across the ready set.
 
 ## Firewall and egress
 
