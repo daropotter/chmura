@@ -20,3 +20,7 @@ engine of logic: the local deploy *is* the deploy.
 - **The dev loop** — rebuild-and-redeploy (with revisions) by default; opt-in
   hot source-sync (`reload`) is the only place an instance changes without a
   revision.
+- **Reaching your app** — `chmura-dev` forwards every named port to `localhost`
+  and prints the address, using the same port-forward tunnel `chmura port-forward`
+  provides. The local address is identical whether the dev installation runs on
+  this machine or on a remote box (VM, WSL, a dedicated dev host).

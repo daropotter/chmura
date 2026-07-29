@@ -30,13 +30,19 @@ installation — see [Architecture](../architecture.md).
 === "Shell installer"
 
     ```bash
-    curl -fsSL https://get.chmura.dev | sh
+    curl -fsSL https://chmura.example/install.sh | sh
     ```
 
 === "From a release"
 
     Download the binary for your platform from the releases page, make it
     executable, and put it on your `PATH`.
+
+!!! info "Distribution is not decided yet"
+    Package names and the installer host above are placeholders. No custom domain
+    is required to ship an installer — a static `install.sh` served from the
+    project's GitHub Pages works today (`curl -fsSL <pages-url>/install.sh | sh`).
+    A dedicated domain is a branding choice for later, not a prerequisite.
 
 `chmura-dev` is installed the same way (`brew install chmura-dev`, or bundled
 with the shell installer).
