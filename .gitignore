@@ -1,0 +1,14 @@
+# MkDocs build output
+site/
+
+# Python / tooling
+.venv/
+__pycache__/
+.cache/
+
+# OS
+.DS_Store
+
+# Working notes, not part of the published docs
+spec/
+.claude/
