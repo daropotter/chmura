@@ -268,7 +268,7 @@ while keeping your configuration; `--force` regenerates from scratch.
 | `chmura.yaml` | The portable project definition. Belongs in Git. No space, remote, tokens, cluster, runtime IDs, or status. |
 | `chmura.local.yaml` | Local override of `chmura.yaml`. Git-ignored. No space or remote — that is the remembered target. |
 | `~/.config/chmura/config.yaml` | User config: remotes, the default remote, output and interactive settings. No project desired state. |
-| `.chmura/state.yaml` | Local project state: the remembered target and the last-seen `projectId`. Git-ignored, never required for correctness. |
+| `.chmura/state.yaml` | Local project state: the remembered target and the last-seen `project-id`. Git-ignored, never required for correctness. |
 
 Precedence, low to high:
 

@@ -15,7 +15,7 @@ engine of logic: the local deploy *is* the deploy.
   load, self-signed TLS, single node, relaxed floor, ephemeral state). The
   manifest is never dev-specialized.
 - **`chmura.dev.yaml`** — its own schema, read only by `chmura-dev`, seeding
-  values from literals, `fromEnv`, `fromFile`, or `generate`; never a manifest
+  values from literals, `from-env`, `from-file`, or `generate`; never a manifest
   layer.
 - **The dev loop** — rebuild-and-redeploy (with revisions) by default; opt-in
   hot source-sync (`reload`) is the only place an instance changes without a

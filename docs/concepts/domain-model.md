@@ -91,7 +91,7 @@ A project belongs to exactly one space. The same working directory can map to
 different remote projects in different spaces — those are separate projects with
 separate identities, not one project in two places.
 
-Identity is a stable, server-assigned `projectId`. The **name** is the
+Identity is a stable, server-assigned `project-id`. The **name** is the
 recognition key within a space: a project is found by the pair `(space, name)`,
 and the name must be written explicitly in `chmura.yaml`. This is what lets a
 fresh clone reach the right project with no local state at all — the name is in

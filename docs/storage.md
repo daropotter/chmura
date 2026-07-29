@@ -184,15 +184,15 @@ opposite — a fresh volume on every revision:
 volumes:
   scratch:
     allocation: per-instance
-    reset: onDeploy       # default: never
+    reset: on-deploy       # default: never
 ```
 
 ```text
 never (default)   durable; survives restart and deploy
-onDeploy          each deploy starts from a new volume
+on-deploy         each deploy starts from a new volume
 ```
 
-With `reset: onDeploy` the old volume is not wiped in place — it detaches and
+With `reset: on-deploy` the old volume is not wiped in place — it detaches and
 goes through cleanup, so protection and retention still apply. The `reset` axis
 names *when* a volume is cleared, leaving room for future triggers without a flag
 per case.
@@ -218,7 +218,7 @@ detachment time, and a state. Deleting a project must never let a new project of
 the same name inherit the old volume.
 
 The [identity model](concepts/domain-model.md) guarantees this: a volume's owner
-is a `projectId`, not a name. A project recreated under the same name gets a new
+is a `project-id`, not a name. A project recreated under the same name gets a new
 ID, so old volumes stay `ORPHANED` until an explicit `chmura volume adopt`.
 
 A volume's lifecycle is copied into the remote object at deploy time, so the
@@ -240,18 +240,18 @@ lifecycle:
 lifecycle:
   detached:
     policy: expire
-    minAge: 30d               # deletable by the cleanup runner after minAge
+    min-age: 30d               # deletable by the cleanup runner after min-age
 ```
 
 ```yaml
 lifecycle:
   detached:
     policy: pressure
-    minAge: 30d               # reclaimable after minAge, but deleted only when
+    min-age: 30d               # reclaimable after min-age, but deleted only when
                               # the pool needs the space
 ```
 
-Under `pressure`, cleanup is strict FIFO: detached volumes only, past `minAge`
+Under `pressure`, cleanup is strict FIFO: detached volumes only, past `min-age`
 only, unprotected only, oldest detachment first, stopping as soon as enough
 capacity is recovered.
 

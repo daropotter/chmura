@@ -72,7 +72,7 @@ applications:
     env:
       DB_PASSWORD:
         secret: db-password
-        onChange: restart
+        on-change: restart
     health:
       check:
         http:

@@ -40,7 +40,7 @@ recorded with the decision so the *why* survives.
 16. Space names are unique within an installation.
 17. Local state is never required for correctness; losing it costs only
     convenience.
-18. A project's identity is a server-assigned `projectId`; its recognition key
+18. A project's identity is a server-assigned `project-id`; its recognition key
     is `(space, name)`.
 19. Deploy never creates a project or space. Creation is always explicit.
 

@@ -86,24 +86,24 @@ applications:
         interval: 5s
         timeout: 2s
       ready:
-        afterSuccesses: 1
-        lostAfterFailures: 3
+        after-successes: 1
+        lost-after-failures: 3
       restart:
-        afterFailures: 6
-      startupTimeout: 2m
+        after-failures: 6
+      startup-timeout: 2m
 ```
 
 This structure lets Chmura enforce a dependency other systems leave to chance:
 
 !!! warning "Killing is never faster than removing from traffic"
-    With a shared check, `restart.afterFailures` must be greater than
-    `ready.lostAfterFailures`. The reverse — an instance killed before it stops
+    With a shared check, `restart.after-failures` must be greater than
+    `ready.lost-after-failures`. The reverse — an instance killed before it stops
     receiving traffic — is a validation error, not something you can misconfigure.
 
 ### Check types
 
 ```yaml
-http:  { path: /healthz, port: http, expectStatus: [200] }
+http:  { path: /healthz, port: http, expect-status: [200] }
 tcp:   { port: signaling }
 exec:  { command: ["/bin/check-queue"] }
 ```
@@ -117,8 +117,8 @@ script, not a new manifest field.
 ### `ready`
 
 ```text
-afterSuccesses      consecutive successes that grant readiness   default 1
-lostAfterFailures   consecutive failures that revoke it          default 3
+after-successes       successes in a row that grant readiness   default 1
+lost-after-failures   failures in a row that revoke it          default 3
 ```
 
 Readiness drives both traffic and rollout progress. The defaults suit a typical
@@ -133,7 +133,7 @@ that is alive but no longer responding. Most apps never need it, and misused it
 turns a blip into a restart storm, so it is opt-in.
 
 It does not apply until `ready` has succeeded once; if readiness never arrives
-within `startupTimeout`, the instance is considered failed. That removes the need
+within `startup-timeout`, the instance is considered failed. That removes the need
 for a separate startup probe.
 
 !!! warning "Restart depends only on the process"
@@ -146,7 +146,7 @@ for a separate startup probe.
 
     ```yaml
     restart:
-      afterFailures: 6
+      after-failures: 6
       check:
         exec:
           command: ["/bin/self-check"]
@@ -287,7 +287,7 @@ other.
 
 ### Readiness, stabilization, rollback
 
-`readinessTimeout` is the maximum time to become ready; `stabilizationPeriod` is
+`readiness-timeout` is the maximum time to become ready; `stabilization-period` is
 how long a batch is watched *after* readiness before moving on. The events that
 end that window in failure are a closed list: the runtime exited, the `restart`
 rule killed it, readiness was lost after being gained, or readiness never arrived
