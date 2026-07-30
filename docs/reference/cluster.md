@@ -168,9 +168,9 @@ Error: volume "uploads" needs allocation: shared,
 ```
 
 Without this list, a `shared` volume, an elastic size, or a hard `max` could not
-be validated ahead of time. The exact, closed set of capability names is still
-being settled; the four above are the ones the model relies on today. See
-[Storage](../storage.md) for how each is used.
+be validated ahead of time. These four are the **settled core** the model relies
+on; the list is open to further capabilities later, but nothing today depends on
+more than these. See [Storage](../storage.md) for how each is used.
 
 ### `tags`
 
