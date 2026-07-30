@@ -51,7 +51,8 @@ fields. See [Architecture](../architecture.md).
 
 ```yaml
 locations:
-  server-room-a: {}
+  server-room-a:
+    description: "Main server room, building A"
   server-room-b: {}
 ```
 
@@ -60,8 +61,13 @@ HA rules refer to (see [Domain model](../concepts/domain-model.md)). A node is
 assigned to a location when it joins, and a pool declares which locations it
 serves.
 
-Location entries are currently empty maps; the key *is* the location. The map
-form leaves room for future per-location metadata without a schema change.
+| Key | Type | Purpose |
+| --- | --- | --- |
+| `description` | string | Optional human label, shown by `inspect` and `doctor`. Purely informational. |
+
+The key *is* the location; the value carries only optional metadata. The map form
+(rather than a bare list) leaves room to add attributes later without a schema
+change.
 
 ## `ingress.<name>`
 
@@ -188,7 +194,7 @@ runtime:
   engine: k3s
 
 locations:
-  server-room-a: {}
+  server-room-a: { description: "Main server room, building A" }
   server-room-b: {}
 
 ingress:
