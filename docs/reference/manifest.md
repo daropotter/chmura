@@ -183,7 +183,7 @@ files:
 Readiness and health are two different questions with two rules;
 [Deployment](../deployment.md#health-checks) has the full semantics and the
 reasoning. `health.check` is the **readiness** probe (may reach a dependency);
-`restart` is the **health** rule (the process only, unless given its own check).
+`healthy` is the **health** rule (the process only, unless given its own check).
 
 ```yaml
 health:
@@ -191,8 +191,8 @@ health:
     http: { path: /ready, port: http }   # or tcp:/exec:
     interval: 5s
     timeout: 2s
-  ready:   { after-successes: 1, lost-after-failures: 3 }
-  restart: { after-failures: 6 }         # opt-in; process-only by default
+  ready:   { unready-failures: 3 }
+  healthy: { unhealthy-failures: 6 }     # opt-in; process-only by default
   startup-timeout: 2m
 ```
 
@@ -201,11 +201,11 @@ health:
 | `check` | object | — | The readiness probe: one of `http` · `tcp` · `exec`. Omitting `health` entirely means `process-only` readiness. |
 | `check.interval` | duration | — | Time between probes. |
 | `check.timeout` | duration | — | When a single probe counts as failed. |
-| `ready.after-successes` | integer | `1` | Consecutive successes that grant readiness. |
-| `ready.lost-after-failures` | integer | `3` | Consecutive failures that revoke it (out of traffic). |
-| `restart` | object | *(absent)* | Opt-in health rule. Absent means only a process crash restarts. Watches the process only unless given its own `check`; **never** the readiness check. |
-| `restart.after-failures` | integer | — | Consecutive failures that kill and restart the instance. |
-| `restart.check` | object | *(process)* | Optional own probe — keep it local to the process, never a downstream. |
+| `ready.ready-successes` | integer | `1` | Consecutive successes that grant readiness. |
+| `ready.unready-failures` | integer | `3` | Consecutive failures that revoke it (out of traffic). |
+| `healthy` | object | *(absent)* | Opt-in health rule. Absent means only a process crash restarts. Watches the process only unless given its own `check`; **never** the readiness check. |
+| `healthy.unhealthy-failures` | integer | — | Consecutive failures that kill and restart the instance. |
+| `healthy.check` | object | *(process)* | Optional own probe — keep it local to the process, never a downstream. |
 | `startup-timeout` | duration | — | Max time to first readiness before the instance is failed. |
 
 Check forms:
@@ -283,7 +283,7 @@ deploy:
     readiness-timeout: 5m
     stabilization-period: 1m
     rollback: automatic     # or: manual, disabled
-    rollback-on: [readiness-failure, runtime-crash, restart-triggered]
+    rollback-on: [readiness-failure, runtime-crash, health-failure]
 ```
 
 | Key | Type | Default | Purpose |
@@ -297,7 +297,7 @@ deploy:
 | `readiness-timeout` | duration | `5m` | Max time to become ready. |
 | `stabilization-period` | duration | `1m` | Observation after readiness before the next batch. |
 | `rollback` | enum | `automatic` | `automatic` · `manual` · `disabled`. |
-| `rollback-on` | list | *(defaults)* | Triggers: `readiness-failure`, `runtime-crash`, `restart-triggered`. |
+| `rollback-on` | list | *(defaults)* | Triggers: `readiness-failure`, `runtime-crash`, `health-failure`. |
 
 `batch.size`, `batch.percentage`, and `batch.partitions` are mutually exclusive.
 There is no `mode` key on the strategy: an incremental rollout is `batch` +
@@ -434,8 +434,8 @@ applications:
       DB_PASSWORD: { secret: db-password, on-change: restart }
     health:
       check:   { http: { path: /healthz, port: http } }
-      ready:   { lost-after-failures: 3 }
-      restart: { after-failures: 6 }
+      ready:   { unready-failures: 3 }
+      healthy: { unhealthy-failures: 6 }
       startup-timeout: 2m
     mounts:
       uploads: { volume: uploads, path: /var/lib/uploads }

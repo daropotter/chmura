@@ -36,7 +36,7 @@ events` exposes that stream addressably.
 ```text
 deploy started              revision 15 created
 rollout advanced            batch 2/4 ready
-instance restarted          api/1, reason: restart
+instance restarted          api/1, reason: unhealthy
 volume degraded             uploads allocated 72Gi of 100Gi preferred
 override set                api instances 6 (daro)
 certificate renewed         shop.example.com

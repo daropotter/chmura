@@ -79,7 +79,7 @@ Readiness governs **traffic**; health governs **restart**. They are two rules:
 | Rule | Asks | Consequence | May depend on a dependency? |
 | --- | --- | --- | --- |
 | `ready` | Can it serve? | in or out of traffic | yes — that is often the point |
-| `restart` | Is the process healthy? | kill and restart in the same slot | **no — the process only** |
+| `healthy` | Is the process itself working? | kill and restart in the same slot | **no — the process only** |
 
 ```yaml
 applications:
@@ -90,14 +90,13 @@ applications:
         interval: 5s
         timeout: 2s
       ready:
-        after-successes: 1
-        lost-after-failures: 3
-      restart:                  # opt-in; looks only at the process by default
-        after-failures: 6
+        unready-failures: 3
+      healthy:                  # opt-in; looks only at the process by default
+        unhealthy-failures: 6
       startup-timeout: 2m
 ```
 
-`health.check` is the **readiness** probe. `restart` is the **health** rule, and
+`health.check` is the **readiness** probe. `healthy` is the **health** rule, and
 it never observes the readiness check — by default it watches only the process,
 and you give it its own `check` to look deeper (below). This is the lesson of a
 real incident, built into the model: a readiness check may legitimately test a
@@ -123,41 +122,41 @@ script, not a new manifest field.
 ### `ready`
 
 ```text
-after-successes       successes in a row that grant readiness   default 1
-lost-after-failures   failures in a row that revoke it          default 3
+ready-successes    successes in a row that grant readiness   default 1
+unready-failures   failures in a row that revoke it          default 3
 ```
 
 Readiness drives both traffic and rollout progress. The defaults suit a typical
 HTTP service, so a declaration is often just `path` and `port`.
 
-### `restart` is a deliberate choice
+### The `healthy` rule is opt-in
 
-Omitting `restart` means **nothing ever kills a running instance except its own
+Omitting `healthy` means **nothing ever kills a running instance except its own
 exit**. That is not a gap: a process crash is observed always, with no check at
-all, and is restarted in the same slot. The `restart` rule exists only to catch
+all, and is restarted in the same slot. The `healthy` rule exists only to catch
 *hangs* — a process that is alive but no longer working. Most apps never need it,
 and misused it turns a blip into a restart storm, so it is opt-in.
 
-By default `restart` watches only the process. To probe deeper — to catch a wedged
+By default `healthy` watches only the process. To probe deeper — to catch a wedged
 process that is technically alive — give it its own check, and keep that check
 local so it cannot fail on a downstream:
 
 ```yaml
-restart:
-  after-failures: 6
+healthy:
+  unhealthy-failures: 6
   check:
     exec: { command: ["/bin/self-check"] }   # the process, not a dependency
 ```
 
-`restart` does not apply until `ready` has succeeded once; if readiness never
+`healthy` does not apply until `ready` has succeeded once; if readiness never
 arrives within `startup-timeout`, the instance is considered failed. That removes
 the need for a separate startup probe.
 
 !!! warning "Never kill on a shared dependency"
     The classic mistake is pointing the killer at a dependency: the database
     blips and *every* instance is killed at once — a restart storm exactly when
-    the system is already struggling. In Chmura this is off by default (`restart`
-    never uses the readiness check), and when you do give `restart` a check, it
+    the system is already struggling. In Chmura this is off by default (`healthy`
+    never uses the readiness check), and when you do give `healthy` a check, it
     must look at the process, not a downstream.
 
 ### No check is allowed, but never invisible
@@ -299,7 +298,7 @@ other.
 
 `readiness-timeout` is the maximum time to become ready; `stabilization-period` is
 how long a batch is watched *after* readiness before moving on. The events that
-end that window in failure are a closed list: the runtime exited, the `restart`
+end that window in failure are a closed list: the runtime exited, the `healthy`
 rule killed it, readiness was lost after being gained, or readiness never arrived
 in time.
 
@@ -307,7 +306,7 @@ in time.
 deploy:
   strategy:
     rollback: automatic     # or: manual, disabled
-    rollback-on: [readiness-failure, runtime-crash, restart-triggered]
+    rollback-on: [readiness-failure, runtime-crash, health-failure]
 ```
 
 - `automatic` — a failed batch reverts every slot changed so far.

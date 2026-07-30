@@ -451,8 +451,8 @@ cause is a shared dependency or a check that is lying, not that every instance i
 individually broken. Pulling them all out makes the outage total; keeping them in
 lets requests through to degrade rather than fail outright.
 
-This pairs with a guideline the [health model](deployment.md#restart-is-a-deliberate-choice)
-already states from the other side: a `restart` rule must depend only on the
+This pairs with a guideline the [health model](deployment.md#the-healthy-rule-is-opt-in)
+already states from the other side: the `healthy` rule must depend only on the
 process, never a shared dependency, so a downstream blip never triggers a restart
 storm. Readiness may reflect a dependency; the panic threshold is what keeps that
 from taking the whole fleet down.
