@@ -229,8 +229,9 @@ batch:
 ```
 
 `size`, `percentage`, and `partitions` are mutually exclusive. The default
-strategy is rolling, `replace: surge`, `batch.size: 1`, a 30s graceful shutdown,
-a 5m readiness timeout, a 1m stabilization period, and automatic rollback.
+strategy is `replace: surge`, `batch.size: 1`, a 30s graceful shutdown, a 5m
+readiness timeout, a 1m stabilization period, and automatic rollback — an
+incremental rollout, one instance at a time.
 
 ### Capacity and `floor`
 
@@ -251,7 +252,8 @@ deploy:
 
 `floor` is the smallest ready count you accept *during* a rollout. It defaults to
 `instances.min` (no consent, no dip below steady state); `floor: 0` accepts full
-downtime and is required by `mode: all-at-once`.
+downtime. Full, all-at-once replacement is not a separate mode — it is one batch
+covering everything with `floor: 0`.
 
 ```text
 swap:    target − batch ≥ floor
@@ -294,9 +296,10 @@ rule killed it, readiness was lost after being gained, or readiness never arrive
 in time.
 
 ```yaml
-rollback:
-  mode: automatic     # or: manual, disabled
-  on: [readiness-failure, runtime-crash, restart-triggered]
+deploy:
+  strategy:
+    rollback: automatic     # or: manual, disabled
+    rollback-on: [readiness-failure, runtime-crash, restart-triggered]
 ```
 
 - `automatic` — a failed batch reverts every slot changed so far.

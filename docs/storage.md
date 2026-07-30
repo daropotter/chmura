@@ -98,12 +98,32 @@ size given      bounded min/preferred/max, no auto-grow
 size omitted    elastic: minimal unit + grow on demand
 ```
 
-Elasticity depends on the pool. A pool that supports `resize` grows for real; one
-that cannot gets a one-time default allocation, shown plainly — a weak guarantee
-never looks like a strong one. On directory-backed pools (a dataset or path with
-no hard quota) size is advisory and needs no pre-allocation. Auto-grow defaults
-are sensible and still being tuned (working values: ~90% threshold, a step of at
-least 1 GiB, capped by the pool's capacity).
+Elasticity depends on the pool. A pool that can grow — a directory-backed pool,
+or one with the resize capability — supports it. A pool that cannot grow makes an
+omitted size an **error** asking for an explicit one; Chmura does not silently
+pick a fixed size. Auto-grow defaults are sensible and still being tuned (working
+values: ~90% threshold, a step of at least 1 GiB, capped by the pool's capacity).
+
+### Enforcing `max` on a directory-backed pool
+
+`max` enforcement is a pool capability, not an assumption. Where the backend can
+set a quota — a ZFS dataset, an XFS project quota, a btrfs qgroup — Chmura sets it
+on the volume, and the kernel enforces `max` hard, at write time.
+
+Where the backend cannot (a plain folder on a filesystem with no project quotas),
+`max` **cannot** be a hard cap, and Chmura says so rather than pretending:
+
+- usage is measured and reported, and a volume over `preferred`/`max` shows
+  `DEGRADED`,
+- new allocations against a pool over its `capacity` are refused (admission
+  control at allocation time),
+- but a single volume can still overrun `max` between measurements — polling
+  `du` is reactive, not a write-time block.
+
+The honest rule: a hard `max` needs a pool that declares the quota capability;
+without it, `max` is advisory and monitored. This is the same
+capability-over-assumption stance as elsewhere — a weak guarantee never looks
+like a strong one.
 
 Shrinking an existing volume is not supported in the first version — a smaller
 size is an error that changes nothing.

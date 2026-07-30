@@ -6,8 +6,8 @@ cluster, runtime IDs, or status. It belongs in Git. Where it deploys comes from 
 [remote and space](../cli.md#addresses), not from this file.
 
 !!! note "Draft"
-    The model is settled; this reference is being filled in. Two field-level
-    questions are still open and marked **Under review** below.
+    The model is settled; this reference is being filled in as the other config
+    files are documented.
 
 ## Naming conventions
 
@@ -35,9 +35,35 @@ once here:
   referencing a stored value: `{ var: <name> }` or `{ secret: <name> }`.
   References resolve project-then-space at deploy time; see
   [values](../getting-started/first-steps.md).
-- **Scalar-or-range.** A sizing field takes a `min`/`preferred`/`max` object, and
-  a bare scalar is shorthand for a fixed range (`memory: 512Mi` ⇒
-  `min = preferred = max = 512Mi`).
+- **Scalar-or-range.** A sizing field takes a `min`/`preferred`/`max` object, or a
+  bare scalar for a fixed value (`memory: 512Mi` ⇒ `min = preferred = max`). The
+  same rule covers `resources`, `instances`, and volume `size` — there is no
+  field-specific sizing syntax. See [Ranges](#ranges).
+
+## Ranges
+
+A range object may omit keys; the rest are filled by a fixed set of rules, so you
+rarely write all three:
+
+| Given | Filled to |
+| --- | --- |
+| `max` only | `min = preferred = max` (fixed at max) |
+| `preferred` only | `min = preferred`, `max = preferred` (fixed at preferred) |
+| `min` only | `preferred = min`, `max = min` (fixed at min) |
+| `min` + `max` | `preferred = min` (aim low, scale toward max) |
+| `preferred` + `max` | `min = preferred` |
+| `min` + `preferred` | `max = preferred` (no scaling above preferred) |
+
+Two rules make this safe:
+
+- **`max` is never unbounded.** Omitting it defaults `max` to `preferred`.
+  Unbounded scaling would be uncontrolled, non-deterministic behavior, so it is
+  not allowed.
+- `min ≤ preferred ≤ max` must hold; a contradictory range is a validation error.
+
+Omitting a range object entirely is allowed only where a default exists
+(`instances` defaults to `1`) or where the target permits it — see volume
+[`size`](#size), which may be elastic.
 
 ## Top level
 
@@ -253,9 +279,8 @@ deploy:
     shutdown: { grace-period: 30s }
     readiness-timeout: 5m
     stabilization-period: 1m
-    rollback:
-      mode: automatic       # or: manual, disabled
-      on: [readiness-failure, runtime-crash, restart-triggered]
+    rollback: automatic     # or: manual, disabled
+    rollback-on: [readiness-failure, runtime-crash, restart-triggered]
 ```
 
 | Key | Type | Default | Purpose |
@@ -264,21 +289,16 @@ deploy:
 | `batch.size` | integer | `1` | Fixed instances per batch. |
 | `batch.percentage` | integer | — | Percent per batch, rounded up, min 1. |
 | `batch.partitions` | integer | — | Split instances into N roughly equal batches. |
-| `floor` | integer | `instances.min` | Smallest ready count tolerated *during* rollout. `0` accepts downtime. |
+| `floor` | integer | `instances.min` | Smallest ready count tolerated *during* rollout. `0` accepts downtime; it replaces the old "all-at-once" mode — one batch covering everything with `floor: 0`. |
 | `shutdown.grace-period` | duration | `30s` | Graceful shutdown window. |
 | `readiness-timeout` | duration | `5m` | Max time to become ready. |
 | `stabilization-period` | duration | `1m` | Observation after readiness before the next batch. |
-| `rollback.mode` | enum | `automatic` | `automatic` · `manual` · `disabled`. |
-| `rollback.on` | list | — | Triggers: `readiness-failure`, `runtime-crash`, `restart-triggered`. |
+| `rollback` | enum | `automatic` | `automatic` · `manual` · `disabled`. |
+| `rollback-on` | list | *(defaults)* | Triggers: `readiness-failure`, `runtime-crash`, `restart-triggered`. |
 
 `batch.size`, `batch.percentage`, and `batch.partitions` are mutually exclusive.
-
-!!! note "Under review — `strategy.mode`"
-    Prose elsewhere mentions `mode: rolling | all-at-once`, but the relationship
-    to `batch` and `floor` is unresolved: `all-at-once` may just be
-    `batch` covering everything plus `floor: 0`, in which case `mode` is
-    redundant. Pending a decision, only `replace`/`batch`/`floor` are documented
-    as the rollout controls. See the findings note in the changelog.
+There is no `mode` key on the strategy: an incremental rollout is `batch` +
+`floor`, and full replacement is one batch with `floor: 0`.
 
 ### `slots`
 
@@ -303,18 +323,20 @@ increase, never reused). See [Storage](../storage.md).
 
 ### `size`
 
-Optional. Omitting it means an **elastic** volume — starts at the pool's smallest
-unit and grows on demand. Providing it means a bounded envelope. For
-`per-instance`, the range is **per instance**, never a total.
+A [range](#ranges) like every other sizing field — scalar for a fixed size,
+object for a range. For `per-instance`, the range is **per instance**, never a
+total.
 
 ```yaml
 size: { min: 70Gi, preferred: 100Gi, max: 200Gi }
+size: 50Gi                    # fixed
 ```
 
-!!! note "Under review — scalar `size` shorthand"
-    Resources allow `memory: 512Mi` as scalar shorthand for a fixed range. Whether
-    `size: 50Gi` is allowed as the same shorthand for volumes is not yet decided.
-    Only the object form and omission are documented for now.
+Omitting `size` entirely requests an **elastic** volume — it starts at the pool's
+smallest unit and grows on demand. This requires a pool that can grow (a
+directory/path pool, or one with the resize capability). If the target pool
+cannot grow, an omitted size is an error asking for an explicit one — Chmura does
+not silently pick a fixed size. See [Storage](../storage.md).
 
 ### `storage`
 

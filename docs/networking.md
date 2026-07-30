@@ -427,11 +427,42 @@ optional add-on or an external component — it is *how* both endpoints
         affinity: client-ip     # or: cookie
     ```
 
-What is *not* in the first version — weighted or canary traffic splitting,
-retries, circuit breaking, outlier ejection — lives in the same edge proxy as a
-future capability. Canary in particular pairs with a future deploy strategy that
-shifts a share of traffic between revisions. Until then, traffic is spread evenly
-across the ready set.
+### Never route to zero: the panic threshold
+
+Health-aware balancing has a failure mode of its own. When instances share a
+downstream dependency and that dependency degrades, *every* instance can lose
+readiness at once. Naïvely, the balancer would pull them all from rotation — and
+now there is nowhere to send traffic. Worse, an autoscaler adding instances only
+feeds the fire, because the new ones fail the same check, and a rollout gated on
+readiness thrashes instead of waiting for the dependency to recover.
+
+Chmura's load balancer does not fall into this. Below a **panic threshold** of
+ready instances (a configurable fraction, sensible default), it stops honoring
+readiness and routes to *all* instances:
+
+```text
+enough ready      route to the ready set only
+below threshold   assume the health signal is systemic, not per-instance —
+                  route to everyone rather than to no one
+```
+
+The reasoning: when most of a fleet reports unready simultaneously, the likeliest
+cause is a shared dependency or a check that is lying, not that every instance is
+individually broken. Pulling them all out makes the outage total; keeping them in
+lets requests through to degrade rather than fail outright.
+
+This pairs with a guideline the [health model](deployment.md#restart-is-a-deliberate-choice)
+already states from the other side: a `restart` rule must depend only on the
+process, never a shared dependency, so a downstream blip never triggers a restart
+storm. Readiness may reflect a dependency; the panic threshold is what keeps that
+from taking the whole fleet down.
+
+### Deferred
+
+Weighted or canary traffic splitting, retries, circuit breaking, and outlier
+ejection live in the same edge proxy as a future capability. Canary in particular
+pairs with a future deploy strategy that shifts a share of traffic between
+revisions. Until then, traffic is spread evenly across the ready set.
 
 ## Firewall and egress
 
