@@ -26,6 +26,11 @@ orchestrator underneath.`,
 		SilenceErrors: true,
 	}
 
+	// Mark flag-parsing errors as usage errors so they map to ExitUsage.
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return &usageError{err}
+	})
+
 	// The version contract is a bare version string, shared with every binary.
 	root.SetVersionTemplate("{{.Version}}\n")
 	// Pre-register --version without a shorthand so cobra does not auto-assign
