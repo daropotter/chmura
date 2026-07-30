@@ -56,6 +56,13 @@ A **location** is a failure domain inside a cluster: a server room, a rack, a
 building, a network zone, or a geographic site. Placement and high-availability
 rules are expressed in terms of locations, never individual machines.
 
+Locations are Chmura's availability zones. Spreading an application across them
+(`placement.spread`) gives it HA within a cluster. Going wider — across regions —
+is beyond the current model: you run the same project in separate spaces, on
+separate clusters, as independent deployments, and balance across them with
+external geo-DNS. Chmura does not replicate a space's data across clusters, nor
+run one active space in several regions at once.
+
 ## Space
 
 A **space** is a logical area that holds projects and their resources. It
