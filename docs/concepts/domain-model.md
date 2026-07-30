@@ -142,8 +142,8 @@ for*, so that projects stay portable across clusters.
   cluster — which is why moving a space between clusters preserves its
   guarantees.
 - A **volume** is a logical, durable resource with a stable ID, an owner, a
-  required and allocated size, a policy, allocation and attachment modes, a
-  lifecycle, and a physical binding.
+  required and allocated size, a policy, an allocation mode (shared or
+  per-instance), a lifecycle, and a physical binding.
 - A **binding** is a volume's current physical realization. It can change during
   a future migration, but the logical volume ID stays.
 

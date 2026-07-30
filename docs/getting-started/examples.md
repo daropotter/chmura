@@ -136,7 +136,6 @@ applications:
 volumes:
   data:
     allocation: per-instance
-    attachment: exclusive
     size:
       min: 20Gi
       preferred: 50Gi

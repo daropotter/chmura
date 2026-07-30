@@ -6,46 +6,40 @@ how it is shared, how big, how long it lives — and Chmura places it on a clust
 pool that satisfies your storage policy. The physical placement can change over
 time; the logical volume ID does not.
 
-## Two independent dimensions
+## Shared or per-instance
 
-How a volume is shared and how it is attached are separate choices.
-
-**Allocation** — one volume, or one per instance:
-
-```text
-shared         one logical volume for all slots
-per-instance   a separate volume for each slot
-```
-
-**Attachment** — one runtime at a time, or many at once:
+A volume is one of two things, and that single choice also settles concurrency —
+there is no separate "attachment" knob:
 
 ```text
-exclusive      one runtime may use the volume at a time
-concurrent     many runtimes may use it simultaneously
+shared         one volume, used by every instance at once (concurrent)
+per-instance   one volume per slot, each used by its own instance (exclusive)
 ```
-
-The four combinations cover the common shapes:
 
 ```yaml
 volumes:
+  uploads:                    # a shared upload directory, many writers
+    allocation: shared
+
   data:                       # a database with a disk per replica
     allocation: per-instance
-    attachment: exclusive
-
-  uploads:                    # a shared upload directory
-    allocation: shared
-    attachment: concurrent
-
-  database:                   # a single database
-    allocation: shared
-    attachment: exclusive
 ```
 
-`concurrent` is not a wish — it is a requirement on the storage. A volume with
-`attachment: concurrent` can only land on a pool that declares the `multi-attach`
-capability. If no pool satisfying the policy declares it, the plan fails, rather
-than quietly running a single instance. See the pools in
-[Architecture](architecture.md).
+A **single database** — one volume, one writer — is just `per-instance` with one
+instance. There is no third "shared but exclusive" mode: restricting a shared
+volume to a single writer is really "run one instance," and that limit belongs in
+`instances`, not here.
+
+```yaml
+volumes:
+  db:
+    allocation: per-instance   # with instances: 1 → one exclusive volume
+```
+
+`shared` is a requirement on the storage, not a wish: it can only land on a pool
+that declares the `multi-attach` capability. If no pool satisfying the policy
+declares it, the plan fails rather than quietly running a single instance. See
+the pools in [Architecture](architecture.md).
 
 ## Mounting
 

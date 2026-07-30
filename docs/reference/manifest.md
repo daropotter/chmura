@@ -201,7 +201,7 @@ health:
 | `check` | object | — | The readiness probe: one of `http` · `tcp` · `exec`. Omitting `health` entirely means `process-only` readiness. |
 | `check.interval` | duration | — | Time between probes. |
 | `check.timeout` | duration | — | When a single probe counts as failed. |
-| `ready.ready-successes` | integer | `1` | Consecutive successes that grant readiness. |
+| `ready.successes` | integer | `1` | Consecutive successes that grant readiness. |
 | `ready.unready-failures` | integer | `3` | Consecutive failures that revoke it (out of traffic). |
 | `healthy` | object | *(absent)* | Opt-in health rule. Absent means only a process crash restarts. Watches the process only unless given its own `check`; **never** the readiness check. |
 | `healthy.unhealthy-failures` | integer | — | Consecutive failures that kill and restart the instance. |
@@ -211,12 +211,15 @@ health:
 Check forms:
 
 ```yaml
-http: { path: /healthz, port: http, expect-status: [200] }
-tcp:  { port: signaling }
-exec: { command: ["/bin/check-queue"] }    # exit 0 = healthy
+http:    { path: /healthz, port: http, expect-status: [200] }
+tcp:     { port: signaling }
+process: { name: myapp }                   # a named process/executable is running
+exec:    { command: ["/bin/check-queue"] } # exit 0 = healthy
 ```
 
-A check names a **port by name**, never a number.
+An `http`/`tcp` check names a **port by name**, never a number. A container crash
+is always restarted with no check at all; the `healthy` rule and the `process`
+check catch a process that runs but is wedged.
 
 ### `mounts.<name>`
 
@@ -288,7 +291,7 @@ deploy:
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `replace` | enum | `surge` | `surge` (new ready before old stops) · `swap` (old stops first). An `attachment: exclusive` volume forces `swap`. |
+| `replace` | enum | `surge` | `surge` (new ready before old stops) · `swap` (old stops first). A durable `per-instance` volume forces `swap` (see [Deployment](../deployment.md)). |
 | `batch.size` | integer | `1` | Fixed instances per batch. |
 | `batch.percentage` | integer | — | Percent per batch, rounded up, min 1. |
 | `batch.partitions` | integer | — | Split instances into N roughly equal batches. |
@@ -317,8 +320,7 @@ increase, never reused). See [Storage](../storage.md).
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `allocation` | enum | — | `shared` (one logical volume for all slots) · `per-instance` (one per slot). |
-| `attachment` | enum | — | `exclusive` (one runtime at a time) · `concurrent` (many; needs a `multi-attach` pool). |
+| `allocation` | enum | — | `shared` (one volume, all instances, concurrent; needs a `multi-attach` pool) · `per-instance` (one volume per slot, exclusive). There is no separate `attachment` — a single-writer volume is `per-instance` with `instances: 1`. |
 | `size` | range | *(elastic)* | See below. |
 | `storage` | object | — | Policy and tag requirements. |
 | `lifecycle` | object | — | Detach retention and protection. |
@@ -443,7 +445,6 @@ applications:
 volumes:
   uploads:
     allocation: shared
-    attachment: concurrent
     size: { min: 70Gi, preferred: 100Gi, max: 200Gi }
     storage:
       policy: balanced

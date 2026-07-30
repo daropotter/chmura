@@ -438,18 +438,21 @@ readiness thrashes instead of waiting for the dependency to recover.
 
 Chmura's load balancer does not fall into this. Below a **panic threshold** of
 ready instances (a configurable fraction, sensible default), it stops honoring
-readiness and routes to *all* instances:
+readiness and routes to the instances that have been **ready at least once**:
 
 ```text
 enough ready      route to the ready set only
 below threshold   assume the health signal is systemic, not per-instance —
-                  route to everyone rather than to no one
+                  route across every once-ready instance rather than to none
 ```
 
 The reasoning: when most of a fleet reports unready simultaneously, the likeliest
 cause is a shared dependency or a check that is lying, not that every instance is
-individually broken. Pulling them all out makes the outage total; keeping them in
-lets requests through to degrade rather than fail outright.
+individually broken. Pulling them all out makes the outage total; spreading the
+load back across them lets requests through to degrade rather than fail outright —
+and the hope is exactly yours: that the load redistributes and the fleet settles.
+The "ready at least once" qualifier matters — a still-starting instance that has
+never been ready is genuinely not able to serve, so it stays out.
 
 This pairs with a guideline the [health model](deployment.md#the-healthy-rule-is-opt-in)
 already states from the other side: the `healthy` rule must depend only on the

@@ -108,21 +108,28 @@ side of the same failure.
 ### Check types
 
 ```yaml
-http:  { path: /healthz, port: http, expect-status: [200] }
-tcp:   { port: signaling }
-exec:  { command: ["/bin/check-queue"] }
+http:    { path: /healthz, port: http, expect-status: [200] }
+tcp:     { port: signaling }
+process: { name: myapp }                  # a named process/executable is running
+exec:    { command: ["/bin/check-queue"] }
 ```
 
 `http` for HTTP services, `tcp` for services that do not speak HTTP (databases,
-TURN, binary protocols), `exec` for everything else including port-less workers
-(exit `0` means healthy). A check names a **port by name**, never a number.
-`exec` is also the extension point: whatever an app considers "healthy" is a
-script, not a new manifest field.
+TURN, binary protocols), `process` to confirm a named process or executable is
+running, `exec` for everything else including port-less workers (exit `0` means
+healthy). An `http`/`tcp` check names a **port by name**, never a number. `exec`
+is the general extension point: whatever an app considers "healthy" is a script,
+not a new manifest field.
+
+The container's own exit is watched with no check at all — a crash is always
+restarted in the same slot (the classic "stay alive"). The `process` check and
+the `healthy` rule sit *above* that, catching a process that is running but
+wedged.
 
 ### `ready`
 
 ```text
-ready-successes    successes in a row that grant readiness   default 1
+successes          successes in a row that grant readiness   default 1
 unready-failures   failures in a row that revoke it          default 3
 ```
 
@@ -215,14 +222,24 @@ Where it is infeasible, the plan says so and requires an explicit `swap`:
 lowering the ready count during a rollout should be visible in the manifest and
 in review, not inferred silently.
 
-### Volume handover forces swap
+### Volumes and swap
 
-A volume with `attachment: exclusive` can be attached to one runtime at a time,
-so the old runtime must release it before the new one starts. An app with such a
-volume can only replace `swap`. Declaring `replace: surge` with an
-exclusive volume is a validation error that tells you exactly how to resolve it.
-There is no separate `handover` field — the old `handover: exclusive` is just
-`replace: swap`. See [Storage](storage.md).
+`replace` interacts with volumes, and the rule follows the **data**, not a rigid
+"exclusive means swap":
+
+- **`shared` volume** — concurrent by nature, so surge is always fine.
+- **Durable `per-instance` volume (the default)** — the new runtime for a slot
+  needs *that slot's data*, so it must take over the same volume, which the old
+  runtime holds. That is exactly what `swap` does: same slot, volume handed over
+  in place. Surge cannot preserve the data, so this requires `swap`.
+- **Ephemeral `per-instance` volume (`reset: on-deploy`)** — the volume starts
+  fresh each deploy anyway, so surge is fine; the surged instance simply gets its
+  own fresh volume in a new slot.
+
+So it is not that an exclusive volume forbids surge — it is that carrying data
+across a rollout needs the old holder to let go first. There is no separate
+`handover` field; this is entirely `replace` plus the volume's durability. See
+[Storage](storage.md).
 
 ### Batches
 
@@ -238,7 +255,9 @@ batch:
 `size`, `percentage`, and `partitions` are mutually exclusive. The default
 strategy is `replace: surge`, `batch.size: 1`, a 30s graceful shutdown, a 5m
 readiness timeout, a 1m stabilization period, and automatic rollback — an
-incremental rollout, one instance at a time.
+incremental rollout, one instance at a time. Every one of those timings —
+`shutdown.grace-period`, `readiness-timeout`, `stabilization-period` — is a field
+you can override; these are only the defaults.
 
 ### Capacity and `floor`
 
@@ -262,9 +281,15 @@ deploy:
 downtime. Full, all-at-once replacement is not a separate mode — it is one batch
 covering everything with `floor: 0`.
 
+**`floor` is a `swap`-only concept.** Under `surge` the ready count never drops —
+new instances are added before old ones go — so there is nothing for `floor` to
+bound, and it is ignored. It matters only when a `swap` (or a durable
+per-instance volume that forces one) takes instances down to replace them; that
+is also what `batch` is for, letting you choose how many are briefly unavailable.
+
 ```text
 swap:    target − batch ≥ floor
-surge:   target + batch ≤ instances.max
+surge:   target + batch ≤ instances.max     (floor not involved)
 ```
 
 The most common corner case — `min: 2`, `preferred: 2`, an exclusive volume —
@@ -273,7 +298,7 @@ cannot roll at all without a choice, and the plan says so instead of guessing:
 ```text
 Error: rolling update of application "api" cannot proceed.
 
-  replace:   swap (volume "data" is attachment: exclusive)
+  replace:   swap (per-instance volume "data" is durable)
   instances: min 2, target 2, max 4
   floor:     2 (default: instances.min)
   batch:     1
@@ -380,9 +405,22 @@ An imperative choice is recorded explicitly, with who and when:
 Application api
   instances
     declared:  min 2, preferred 4, max 10
-    override:  6  (daro, 2026-03-14, "traffic spike")
+    override:  6  (daro, 2026-03-14, expires in 1h50m, "traffic spike")
     running:   6
 ```
+
+An override may carry an **expiry** — a duration or an absolute time — after which
+it clears itself and the value returns to its declared envelope. This is exactly
+right for a temporary bump like a traffic spike: you set it and forget it, and the
+system does not stay scaled up forever because someone forgot to revert:
+
+```bash
+chmura app scale api --instances 6 --for 2h
+chmura app scale api --instances 6 --until 2026-03-15T08:00Z
+```
+
+Without `--for`/`--until` an override is indefinite until cleared. On expiry, the
+value simply reverts — the same as a manual `--clear`.
 
 The effective state is `spec` covered by `overrides`. A deploy **does not clear
 overrides** — it replaces the envelope and checks the override still fits:
