@@ -404,7 +404,7 @@ leader — each stable slot has its own name:
 api-0, api-1, api-2      a specific slot, always the same instance behind it
 ```
 
-Per-slot names are what make per-instance volumes useful: `api-0` always resolves
+Per-slot names are what make exclusive volumes useful: `api-0` always resolves
 to the instance that owns `data/0`, across restarts and deploys.
 
 ### Load balancing
@@ -442,7 +442,7 @@ readiness and routes to the instances that have been **ready at least once**:
 
 ```text
 enough ready      route to the ready set only
-below threshold   assume the health signal is systemic, not per-instance —
+below threshold   assume the signal is systemic, not about individual
                   route across every once-ready instance rather than to none
 ```
 
@@ -453,6 +453,35 @@ load back across them lets requests through to degrade rather than fail outright
 and the hope is exactly yours: that the load redistributes and the fleet settles.
 The "ready at least once" qualifier matters — a still-starting instance that has
 never been ready is genuinely not able to serve, so it stays out.
+
+#### How it decides
+
+The threshold is a **fraction of the fleet**, not an absolute count. With ten
+instances and a 50% threshold:
+
+```text
+9 ready   → normal — route to the 9
+6 ready   → normal — route to the 6
+4 ready   → below 50% → panic: route across all instances that were ever ready
+```
+
+Step by step:
+
+1. The balancer always knows how many instances are ready versus how many exist.
+2. At or above the threshold, it routes to the ready set only — an unready
+   instance is genuinely left out.
+3. The instant the ready fraction falls below the threshold, it flips: it stops
+   trusting readiness and spreads traffic across every instance that has been
+   ready at least once.
+4. When enough recover to cross back above the threshold, it returns to normal.
+
+So it never routes to zero, and it never funnels the whole load onto the last one
+or two "ready" instances — which would just topple those too. It is a deliberate
+**bet**: below the threshold, Chmura assumes the readiness signal is lying about a
+systemic problem and fails *open*. If it is wrong and the instances really are all
+broken, requests fail anyway — but panic mode never turns a recoverable dependency
+blip into a self-amplifying collapse. The threshold and the fraction are tunable;
+the default errs toward staying up.
 
 This pairs with a guideline the [health model](deployment.md#the-healthy-rule-is-opt-in)
 already states from the other side: the `healthy` rule must depend only on the

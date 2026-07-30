@@ -118,7 +118,7 @@ api/2
 ```
 
 A slot stays stable across restarts, deploys of a new revision, and runtime
-swaps. It can own its own `per-instance` volume.
+swaps. It can own its own `exclusive` volume.
 
 A **runtime instance** is the concrete, momentary process or container behind a
 slot. When the image is swapped, the slot stays and the runtime changes:
@@ -143,7 +143,7 @@ for*, so that projects stay portable across clusters.
   guarantees.
 - A **volume** is a logical, durable resource with a stable ID, an owner, a
   required and allocated size, a policy, an allocation mode (shared or
-  per-instance), a lifecycle, and a physical binding.
+  exclusive), a lifecycle, and a physical binding.
 - A **binding** is a volume's current physical realization. It can change during
   a future migration, but the logical volume ID stays.
 

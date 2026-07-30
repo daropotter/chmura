@@ -48,7 +48,7 @@ failure.
 
 ### Scaling and storage capacity
 
-A new instance with a `per-instance` volume needs room for its own volume, so
+A new instance with an `exclusive` volume needs room for its own volume, so
 scaling up follows the same rule as creating one — and never forces it:
 
 ```text
@@ -228,11 +228,11 @@ in review, not inferred silently.
 "exclusive means swap":
 
 - **`shared` volume** — concurrent by nature, so surge is always fine.
-- **Durable `per-instance` volume (the default)** — the new runtime for a slot
+- **Durable `exclusive` volume (the default)** — the new runtime for a slot
   needs *that slot's data*, so it must take over the same volume, which the old
   runtime holds. That is exactly what `swap` does: same slot, volume handed over
   in place. Surge cannot preserve the data, so this requires `swap`.
-- **Ephemeral `per-instance` volume (`reset: on-deploy`)** — the volume starts
+- **Ephemeral `exclusive` volume (`reset: on-deploy`)** — the volume starts
   fresh each deploy anyway, so surge is fine; the surged instance simply gets its
   own fresh volume in a new slot.
 
@@ -284,7 +284,7 @@ covering everything with `floor: 0`.
 **`floor` is a `swap`-only concept.** Under `surge` the ready count never drops —
 new instances are added before old ones go — so there is nothing for `floor` to
 bound, and it is ignored. It matters only when a `swap` (or a durable
-per-instance volume that forces one) takes instances down to replace them; that
+exclusive volume that forces one) takes instances down to replace them; that
 is also what `batch` is for, letting you choose how many are briefly unavailable.
 
 ```text
@@ -298,7 +298,7 @@ cannot roll at all without a choice, and the plan says so instead of guessing:
 ```text
 Error: rolling update of application "api" cannot proceed.
 
-  replace:   swap (per-instance volume "data" is durable)
+  replace:   swap (exclusive volume "data" is durable)
   instances: min 2, target 2, max 4
   floor:     2 (default: instances.min)
   batch:     1

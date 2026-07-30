@@ -102,7 +102,7 @@ endpoints:
       certificate: automatic
 ```
 
-## A stateful service with per-instance storage
+## A stateful service with a disk per instance
 
 Each instance gets its own volume, bound to its stable slot. The size is
 per instance, never a shared total.
@@ -135,7 +135,7 @@ applications:
 
 volumes:
   data:
-    allocation: per-instance
+    allocation: exclusive
     size:
       min: 20Gi
       preferred: 50Gi

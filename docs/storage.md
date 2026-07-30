@@ -6,14 +6,14 @@ how it is shared, how big, how long it lives — and Chmura places it on a clust
 pool that satisfies your storage policy. The physical placement can change over
 time; the logical volume ID does not.
 
-## Shared or per-instance
+## Shared or exclusive
 
 A volume is one of two things, and that single choice also settles concurrency —
 there is no separate "attachment" knob:
 
 ```text
-shared         one volume, used by every instance at once (concurrent)
-per-instance   one volume per slot, each used by its own instance (exclusive)
+shared      one volume, used by every instance at once (concurrent)
+exclusive   one volume per slot, each used by its own instance
 ```
 
 ```yaml
@@ -22,10 +22,10 @@ volumes:
     allocation: shared
 
   data:                       # a database with a disk per replica
-    allocation: per-instance
+    allocation: exclusive
 ```
 
-A **single database** — one volume, one writer — is just `per-instance` with one
+A **single database** — one volume, one writer — is just `exclusive` with one
 instance. There is no third "shared but exclusive" mode: restricting a shared
 volume to a single writer is really "run one instance," and that limit belongs in
 `instances`, not here.
@@ -33,7 +33,7 @@ volume to a single writer is really "run one instance," and that limit belongs i
 ```yaml
 volumes:
   db:
-    allocation: per-instance   # with instances: 1 → one exclusive volume
+    allocation: exclusive      # with instances: 1 → one volume, one writer
 ```
 
 `shared` is a requirement on the storage, not a wish: it can only land on a pool
@@ -122,9 +122,9 @@ like a strong one.
 Shrinking an existing volume is not supported in the first version — a smaller
 size is an error that changes nothing.
 
-### Per-instance size is always per instance
+### An exclusive volume's size is per instance
 
-For `allocation: per-instance`, `min`/`preferred`/`max` describes **one slot**,
+For `allocation: exclusive`, `min`/`preferred`/`max` describes **one instance's volume**,
 never the sum. The total requirement is `size × instance count`, and Chmura
 checks that when placing. A combined reading would be a trap: scaling up would
 split one pool across more instances, so adding a replica would degrade the space
@@ -132,7 +132,7 @@ of the ones already running.
 
 ## Slots, reclaim, and `reset`
 
-A per-instance volume binds to a stable [slot](concepts/domain-model.md):
+An exclusive volume binds to a stable [slot](concepts/domain-model.md):
 
 ```text
 api/0 → data/0
@@ -162,7 +162,7 @@ the space was used in the meantime               → a fresh volume, possibly DE
 ```
 
 !!! warning "Reclaim is best-effort"
-    A per-instance volume's data may or may not survive scale-down and scale-up.
+    An exclusive volume's data may or may not survive scale-down and scale-up.
     It depends on the volume's lifecycle policy and whether the freed space was
     used in the meantime. Chmura does not hide this — promising durability that
     is not there would be worse than its absence.
@@ -190,14 +190,14 @@ identity.
 
 ### `reset` — when a volume starts fresh
 
-By default a per-instance volume is durable: the same slot recovers the same data
+By default an exclusive volume is durable: the same slot recovers the same data
 across restart and deploy. A workload with purely temporary state can ask for the
 opposite — a fresh volume on every revision:
 
 ```yaml
 volumes:
   scratch:
-    allocation: per-instance
+    allocation: exclusive
     reset: on-deploy       # default: never
 ```
 
@@ -220,8 +220,8 @@ Application placement and storage selection are resolved together:
   of them,
 - if both cannot be satisfied, the plan fails.
 
-This is why an `exclusive` volume forces a `swap` rollout, and why per-instance
-volume capacity gates scale-up — see [Deployment](deployment.md).
+This is why an `exclusive` volume forces a `swap` rollout, and why exclusive-volume
+capacity gates scale-up — see [Deployment](deployment.md).
 
 ## Lifecycle and retention
 

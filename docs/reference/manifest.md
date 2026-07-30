@@ -13,7 +13,7 @@ cluster, runtime IDs, or status. It belongs in Git. Where it deploys comes from 
 
 Every Chmura-defined key and enum value — here and in the other config files
 (`chmura.dev.yaml`, `cluster.yaml`, `installation.yaml`) — is **kebab-case**:
-`on-deploy`, `min-age`, `startup-timeout`, `per-instance`, `multi-attach`. This
+`on-deploy`, `min-age`, `startup-timeout`, `grace-period`, `multi-attach`. This
 matches the CLI, whose flags are kebab-case too (`--fail-on-degraded`), so the
 same concept is spelled the same in a flag and in a manifest.
 
@@ -291,7 +291,7 @@ deploy:
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `replace` | enum | `surge` | `surge` (new ready before old stops) · `swap` (old stops first). A durable `per-instance` volume forces `swap` (see [Deployment](../deployment.md)). |
+| `replace` | enum | `surge` | `surge` (new ready before old stops) · `swap` (old stops first). A durable `exclusive` volume forces `swap` (see [Deployment](../deployment.md)). |
 | `batch.size` | integer | `1` | Fixed instances per batch. |
 | `batch.percentage` | integer | — | Percent per batch, rounded up, min 1. |
 | `batch.partitions` | integer | — | Split instances into N roughly equal batches. |
@@ -320,7 +320,7 @@ increase, never reused). See [Storage](../storage.md).
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `allocation` | enum | — | `shared` (one volume, all instances, concurrent; needs a `multi-attach` pool) · `per-instance` (one volume per slot, exclusive). There is no separate `attachment` — a single-writer volume is `per-instance` with `instances: 1`. |
+| `allocation` | enum | — | `shared` (one volume, all instances, concurrent; needs a `multi-attach` pool) · `exclusive` (one volume per slot, one writer each). There is no separate `attachment` — a single-writer volume is `exclusive` with `instances: 1`. |
 | `size` | range | *(elastic)* | See below. |
 | `storage` | object | — | Policy and tag requirements. |
 | `lifecycle` | object | — | Detach retention and protection. |
@@ -329,8 +329,8 @@ increase, never reused). See [Storage](../storage.md).
 ### `size`
 
 A [range](#ranges) like every other sizing field — scalar for a fixed size,
-object for a range. For `per-instance`, the range is **per instance**, never a
-total.
+object for a range. For an `exclusive` volume, the range is **per instance**,
+never a total.
 
 ```yaml
 size: { min: 70Gi, preferred: 100Gi, max: 200Gi }
