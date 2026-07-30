@@ -116,9 +116,12 @@ documented — not a historical log — so terminology matches the rest of these
     decimals are the front door, since Chmura hides orchestrator jargon.
 6. Memory suffixes are case-insensitive and lenient — `M`, `MB`, `mb`, `Mi`,
     `MiB`, and the G equivalents all read as **binary** (1024-based), one family,
-    the Docker way. Chmura does not impose the strict SI-vs-IEC distinction on the
-    user; it resolves to exact bytes and shows them. `Mi`/`Gi` are canonical in
-    examples.
+    the Docker way. Reading binary also resolves in the safe direction: an app
+    never gets *less* memory than its number states (a touch more is harmless;
+    less could starve an app that sized its own RAM). More generally, an ambiguous
+    unit resolves generously, never down. Chmura does not impose the SI-vs-IEC
+    distinction on the user; it resolves to exact bytes and shows them. `Mi`/`Gi`
+    are canonical in examples and map 1:1 to a Kubernetes backend.
 
 ## Health and readiness
 
