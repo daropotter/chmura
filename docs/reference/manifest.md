@@ -5,10 +5,6 @@ and endpoints. It holds **desired state only** — never a space, remote, tokens
 cluster, runtime IDs, or status. It belongs in Git. Where it deploys comes from a
 [remote and space](../cli.md#addresses), not from this file.
 
-!!! note "Draft"
-    The model is settled; this reference is being filled in as the other config
-    files are documented.
-
 ## Naming conventions
 
 Every Chmura-defined key and enum value — here and in the other config files

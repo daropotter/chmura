@@ -19,10 +19,6 @@ like `fast` by name, and `fast` must guarantee the same thing wherever the
 project's space happens to live. If policies were per-cluster, moving a space
 between clusters would silently change its guarantees. All keys are kebab-case.
 
-!!! note "Draft"
-    The storage-policy model is settled. The issuer, identity, and secrets
-    sections have fixed *shapes* but deferred details — noted below.
-
 ## Top level
 
 | Key | Type | Purpose |
