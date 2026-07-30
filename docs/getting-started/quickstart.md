@@ -91,10 +91,12 @@ When it finishes, it prints where the app is reachable:
 ```
 
 !!! note "How dev exposes ports"
-    `chmura-dev` forwards each of the application's named ports to `localhost`
-    and prints the address — the same port-forward mechanism `chmura port-forward`
-    uses, just automatic. Because it is a tunnel, the local address is identical
-    whether the dev installation runs on this machine, in a VM, or in WSL.
+    Production reaches an app through an [endpoint](../networking.md), but a
+    throwaway local app should be reachable without declaring one. So `chmura-dev`
+    forwards every named port to `localhost` and prints the address — the same
+    port-forward tunnel `chmura port-forward` uses, just automatic. The local
+    address is identical whether the dev installation runs on this machine, in a
+    VM, or in WSL.
 
 Open <http://localhost:8080> and you should see `hello from chmura`.
 
@@ -128,15 +130,6 @@ changes without a new revision, and dev-only by design.
 chmura-dev down                # removes the local installation and its state
 chmura-dev down --keep-state   # keep volumes for next time
 ```
-
-## How you reach the app
-
-Production reaches an application through an [endpoint](../networking.md), but a
-throwaway local app should be reachable without declaring one. In the dev
-profile, `chmura-dev` forwards every named port to `localhost` — the same
-port-forward mechanism `chmura port-forward` uses, just automatic. Because it is
-a tunnel, the local address is identical whether the dev installation runs here,
-in a VM, or in WSL.
 
 Next: **[First steps](first-steps.md)** — the same app, deployed to a real
 installation.

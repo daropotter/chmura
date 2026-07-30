@@ -1,5 +1,8 @@
 site_name: Chmura
 site_description: An open-source private-cloud platform with a CLI-first workflow.
+site_url: https://daropotter.github.io/chmura/
+repo_url: https://github.com/daropotter/chmura
+repo_name: daropotter/chmura
 docs_dir: docs
 
 theme:

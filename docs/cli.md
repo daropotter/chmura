@@ -156,7 +156,7 @@ The remote name is a prefix ending in a colon:
 company:production/shop
 ```
 
-Omitting it uses the remote chosen by the [selection order](#remote-selection).
+Omitting it uses the remote chosen by the [selection order](#remote-selection-order).
 The remote alone, without a space, is written with a trailing colon — useful for
 installation-level commands:
 
@@ -230,7 +230,6 @@ Project: shop
 With no target and no address, a remote command errors — it does not fall back to
 a default space.
 
-<a id="remote-selection"></a>
 ### Remote selection order
 
 For an address where the remote name is omitted:

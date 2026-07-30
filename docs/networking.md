@@ -427,7 +427,7 @@ optional add-on or an external component — it is *how* both endpoints
         affinity: client-ip     # or: cookie
     ```
 
-### Never route to zero: the panic threshold
+### Never route to zero
 
 Health-aware balancing has a failure mode of its own. When instances share a
 downstream dependency and that dependency degrades, *every* instance can lose
@@ -481,7 +481,7 @@ or two "ready" instances — which would just topple those too. It is a delibera
 systemic problem and fails *open*. If it is wrong and the instances really are all
 broken, requests fail anyway — but panic mode never turns a recoverable dependency
 blip into a self-amplifying collapse. The threshold and the fraction are tunable;
-the default errs toward staying up.
+the default leans toward staying up.
 
 This pairs with a guideline the [health model](deployment.md#the-healthy-rule-is-opt-in)
 already states from the other side: the `healthy` rule must depend only on the
