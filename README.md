@@ -14,14 +14,16 @@ lower unless you choose to.
 
 ## Status
 
-Design specification, work in progress. The model is settled across the areas
-documented here; implementation has not started. Nothing in these docs is a
-promise of a shipped feature.
+The design specification is settled and
+[published](https://daropotter.github.io/chmura/); it will keep evolving
+alongside the project. Implementation has just begun and is at an early stage —
+nothing here is a promise of a shipped feature.
 
 ## Documentation
 
-The docs live in [`docs/`](docs/) and are written as plain Markdown. They render
-as-is on GitHub Pages and are also set up to build with
+The docs live in [`docs/`](docs/) and are published at
+**<https://daropotter.github.io/chmura/>**. They are written as plain Markdown,
+render as-is on GitHub Pages, and also build with
 [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/).
 
 ```bash
