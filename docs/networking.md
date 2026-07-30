@@ -349,7 +349,7 @@ user model. For an HTTPS request with `terminate`:
 ```text
 1. The client connects to the ingress address on the endpoint's port (e.g. 443).
 
-2. The edge layer reads the hostname:
+2. The edge proxy reads the hostname:
      http  → from the Host header
      https → from SNI, before any decryption
 

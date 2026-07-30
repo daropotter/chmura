@@ -9,6 +9,4 @@ __pycache__/
 # OS
 .DS_Store
 
-# Working notes, not part of the published docs
-spec/
 .claude/

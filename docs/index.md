@@ -95,9 +95,12 @@ locally in about a minute, then read on:
 - **[CLI contract](cli.md)** — addresses, flags, output, exit codes.
 - **[Networking & endpoints](networking.md)** — ports, endpoints, TLS, routing.
 - **[Deployment & rollout](deployment.md)** — health, strategies, revisions.
+- **[Storage & volumes](storage.md)** — allocation, sizing, lifecycle.
 - **[Observability](observability.md)** — logs, events, metrics, traces.
 - **[Architecture](architecture.md)** — control plane, agents, admin plane.
 - **[Local dev](local-dev.md)** — the same engine, in a dev profile.
+- **[Reference](reference/manifest.md)** — every key in `chmura.yaml`,
+  `cluster.yaml`, and `installation.yaml`.
 - **[Design decisions](decisions.md)** — the settled choices, with rationale.
 
 </div>
