@@ -76,3 +76,28 @@ func TestExecuteNoSuggestionForFarFlag(t *testing.T) {
 		t.Errorf("should not suggest for a far-off flag\n%s", s)
 	}
 }
+
+func TestExecuteSuggestsCloseCommand(t *testing.T) {
+	var out, errb bytes.Buffer
+	if code := Execute([]string{"versionn"}, &out, &errb); code != ExitUsage {
+		t.Errorf("code = %d, want %d", code, ExitUsage)
+	}
+	s := errb.String()
+	for _, want := range []string{`unknown command "versionn"`, "Did you mean?", "version"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("stderr missing %q\n%s", want, s)
+		}
+	}
+}
+
+func TestExecuteNoSuggestionForFarCommand(t *testing.T) {
+	var out, errb bytes.Buffer
+	Execute([]string{"zzzzzzzz"}, &out, &errb)
+	s := errb.String()
+	if !strings.Contains(s, `unknown command "zzzzzzzz"`) {
+		t.Errorf("stderr missing the unknown-command line\n%s", s)
+	}
+	if strings.Contains(s, "Did you mean?") {
+		t.Errorf("should not suggest for a far-off command\n%s", s)
+	}
+}

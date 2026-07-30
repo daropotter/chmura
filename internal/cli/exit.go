@@ -37,7 +37,15 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 
 	err := root.Execute()
 	if err != nil {
-		fmt.Fprintln(stderr, "Error:", err.Error())
+		msg := err.Error()
+		if strings.HasPrefix(msg, "unknown command") {
+			// cobra embeds a "Did you mean this?" block with tab indent; rewrite
+			// it to our flag-suggestion format ("Did you mean?", two-space indent).
+			msg = strings.Replace(msg, "Did you mean this?", "Did you mean?", 1)
+			msg = strings.ReplaceAll(msg, "\t", "  ")
+			msg = strings.TrimRight(msg, "\n")
+		}
+		fmt.Fprintln(stderr, "Error:", msg)
 	}
 	return classify(err)
 }
