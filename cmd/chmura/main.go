@@ -4,12 +4,11 @@ package main
 import (
 	"os"
 
-	"github.com/daropotter/chmura/internal/version"
+	"github.com/daropotter/chmura/internal/cli"
 )
 
 func main() {
-	if handled, code := version.Run(os.Args[1:], os.Stdout); handled {
-		os.Exit(code)
+	if err := cli.NewRootCmd().Execute(); err != nil {
+		os.Exit(1)
 	}
-	// No other commands yet.
 }
