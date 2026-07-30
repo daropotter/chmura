@@ -6,7 +6,14 @@ site/
 __pycache__/
 .cache/
 
+# Go build output
+bin/
+
 # OS
 .DS_Store
 
 .claude/
+
+# Internal development files
+.dev/
+AGENTS.md
