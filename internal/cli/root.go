@@ -3,6 +3,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -26,9 +27,18 @@ orchestrator underneath.`,
 		SilenceErrors: true,
 	}
 
-	// Mark flag-parsing errors as usage errors so they map to ExitUsage.
-	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
-		return &usageError{err}
+	// Mark flag-parsing errors as usage errors so they map to ExitUsage, and
+	// turn an unknown flag into an "unknown option" message with a suggestion
+	// when a close known flag exists.
+	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		tok, ok := unknownLongFlag(err)
+		if !ok {
+			return &usageError{err}
+		}
+		if s := suggestFlag(cmd.Flags(), strings.TrimLeft(tok, "-")); s != "" {
+			return &usageError{fmt.Errorf("unknown option %q\n\nDid you mean?\n  --%s", tok, s)}
+		}
+		return &usageError{fmt.Errorf("unknown option %q", tok)}
 	})
 
 	// The version contract is a bare version string, shared with every binary.
