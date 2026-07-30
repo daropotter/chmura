@@ -49,6 +49,7 @@ orchestrator underneath.`,
 	root.CompletionOptions.DisableDefaultCmd = true
 
 	root.AddCommand(newVersionCmd())
+	root.AddCommand(newDoctorCmd())
 	return root
 }
 
