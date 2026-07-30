@@ -14,9 +14,9 @@ applications:
   api:
     resources:
       cpu:
-        min: 100m
-        preferred: 500m
-        max: 2000m
+        min: 0.1
+        preferred: 0.5
+        max: 2
       memory:
         min: 128Mi
         preferred: 512Mi
@@ -34,6 +34,10 @@ applications:
 
 A scalar is shorthand for a fixed range — `memory: 512Mi` means
 `min = preferred = max = 512Mi`.
+
+CPU is measured in **cores** — `0.5` is half a core, `2` is two cores. Decimals
+are canonical, but the Kubernetes-style millicore form (`500m` = `0.5`) is also
+accepted. Memory uses binary units: `512Mi`, `1Gi`.
 
 An instance given at least `min` but less than `preferred` runs **degraded**, and
 status shows all of it — required minimum, preferred, allocated, max, and the

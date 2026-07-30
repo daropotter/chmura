@@ -125,12 +125,16 @@ instances: { min: 2, preferred: 4, max: 10 }
 
 ```yaml
 resources:
-  cpu:    { min: 100m, preferred: 500m, max: 2000m }
+  cpu:    { min: 0.1, preferred: 0.5, max: 2 }
   memory: 512Mi        # scalar shorthand for a fixed range
 ```
 
 `cpu` and `memory` are each scalar-or-range. An instance given at least `min` but
 below `preferred` runs **degraded** (shown in status), not failed.
+
+CPU is in **cores** (`0.5` is half a core); decimals are canonical, and the
+millicore form (`500m` = `0.5`) is also accepted. Memory uses binary units
+(`Mi`, `Gi`).
 
 ### `ports.<name>`
 

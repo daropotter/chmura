@@ -111,6 +111,10 @@ documented — not a historical log — so terminology matches the rest of these
 4. `chmura init` infers only from `Dockerfile` and `docker-compose`, never from
     application behavior; what it cannot derive it writes as commented scaffolding,
     and it never copies a secret value.
+5. CPU is expressed in cores, with **decimals canonical** (`0.5`). The
+    Kubernetes-style millicore form (`500m`) is accepted, not rejected — but
+    decimals are the front door, since Chmura hides orchestrator jargon. Memory
+    keeps binary units (`Mi`, `Gi`).
 
 ## Health and readiness
 
