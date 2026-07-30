@@ -27,18 +27,17 @@ orchestrator underneath.`,
 		SilenceErrors: true,
 	}
 
-	// Mark flag-parsing errors as usage errors so they map to ExitUsage, and
-	// turn an unknown flag into an "unknown option" message with a suggestion
-	// when a close known flag exists.
+	// Mark flag-parsing errors as usage errors so they map to ExitUsage. pflag
+	// offers no flag suggestion, so when a typo'd flag is close to a known one,
+	// append a hint using cobra's own phrasing — adapt to the framework rather
+	// than restyling its messages.
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
-		tok, ok := unknownLongFlag(err)
-		if !ok {
-			return &usageError{err}
+		if tok, ok := unknownLongFlag(err); ok {
+			if s := suggestFlag(cmd.Flags(), strings.TrimLeft(tok, "-")); s != "" {
+				return &usageError{fmt.Errorf("%w\n\nDid you mean this?\n\t--%s", err, s)}
+			}
 		}
-		if s := suggestFlag(cmd.Flags(), strings.TrimLeft(tok, "-")); s != "" {
-			return &usageError{fmt.Errorf("unknown option %q\n\nDid you mean?\n  --%s", tok, s)}
-		}
-		return &usageError{fmt.Errorf("unknown option %q", tok)}
+		return &usageError{err}
 	})
 
 	// The version contract is a bare version string, shared with every binary.
