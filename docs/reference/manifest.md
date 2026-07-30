@@ -133,8 +133,13 @@ resources:
 below `preferred` runs **degraded** (shown in status), not failed.
 
 CPU is in **cores** (`0.5` is half a core); decimals are canonical, and the
-millicore form (`500m` = `0.5`) is also accepted. Memory uses binary units
-(`Mi`, `Gi`).
+millicore form (`500m` = `0.5`) is also accepted.
+
+Memory suffixes are **case-insensitive and lenient**: `512M`, `512MB`, `512mb`,
+and `512Mi` all mean the same 512 mebibytes. Chmura reads every suffix as binary
+(1024-based) — the container reality — and shows the resolved size in status, so
+the ~5% SI-vs-binary quibble never bites. `Mi`/`Gi` remain the canonical form in
+examples.
 
 ### `ports.<name>`
 

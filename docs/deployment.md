@@ -37,7 +37,9 @@ A scalar is shorthand for a fixed range — `memory: 512Mi` means
 
 CPU is measured in **cores** — `0.5` is half a core, `2` is two cores. Decimals
 are canonical, but the Kubernetes-style millicore form (`500m` = `0.5`) is also
-accepted. Memory uses binary units: `512Mi`, `1Gi`.
+accepted. Memory suffixes are case-insensitive and lenient — `512M`, `512MB`,
+`512mb`, and `512Mi` all mean the same 512 mebibytes (Chmura reads every suffix
+as binary); `Mi`/`Gi` stay canonical in examples.
 
 An instance given at least `min` but less than `preferred` runs **degraded**, and
 status shows all of it — required minimum, preferred, allocated, max, and the

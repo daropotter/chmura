@@ -113,8 +113,12 @@ documented — not a historical log — so terminology matches the rest of these
     and it never copies a secret value.
 5. CPU is expressed in cores, with **decimals canonical** (`0.5`). The
     Kubernetes-style millicore form (`500m`) is accepted, not rejected — but
-    decimals are the front door, since Chmura hides orchestrator jargon. Memory
-    keeps binary units (`Mi`, `Gi`).
+    decimals are the front door, since Chmura hides orchestrator jargon.
+6. Memory suffixes are case-insensitive and lenient — `M`, `MB`, `mb`, `Mi`,
+    `MiB`, and the G equivalents all read as **binary** (1024-based), one family,
+    the Docker way. Chmura does not impose the strict SI-vs-IEC distinction on the
+    user; it resolves to exact bytes and shows them. `Mi`/`Gi` are canonical in
+    examples.
 
 ## Health and readiness
 
