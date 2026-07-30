@@ -180,29 +180,32 @@ files:
 
 ### `health`
 
-One `check` mechanism, two rules over its results. Full semantics in
-[Deployment](../deployment.md#health-checks).
+Readiness and health are two different questions with two rules;
+[Deployment](../deployment.md#health-checks) has the full semantics and the
+reasoning. `health.check` is the **readiness** probe (may reach a dependency);
+`restart` is the **health** rule (the process only, unless given its own check).
 
 ```yaml
 health:
-  check:
-    http: { path: /healthz, port: http }   # or tcp:/exec:
+  check:                      # the readiness probe
+    http: { path: /ready, port: http }   # or tcp:/exec:
     interval: 5s
     timeout: 2s
   ready:   { after-successes: 1, lost-after-failures: 3 }
-  restart: { after-failures: 6 }
+  restart: { after-failures: 6 }         # opt-in; process-only by default
   startup-timeout: 2m
 ```
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `check` | object | — | Probe mechanism: one of `http` · `tcp` · `exec`. Omitting `health` entirely means `process-only` readiness. |
+| `check` | object | — | The readiness probe: one of `http` · `tcp` · `exec`. Omitting `health` entirely means `process-only` readiness. |
 | `check.interval` | duration | — | Time between probes. |
 | `check.timeout` | duration | — | When a single probe counts as failed. |
 | `ready.after-successes` | integer | `1` | Consecutive successes that grant readiness. |
-| `ready.lost-after-failures` | integer | `3` | Consecutive failures that revoke it. |
-| `restart` | object | *(absent)* | Opt-in. Absent means the check never kills. May carry its own `check`. |
-| `restart.after-failures` | integer | — | Consecutive failures that kill the instance. Must exceed `ready.lost-after-failures` (validation error otherwise). |
+| `ready.lost-after-failures` | integer | `3` | Consecutive failures that revoke it (out of traffic). |
+| `restart` | object | *(absent)* | Opt-in health rule. Absent means only a process crash restarts. Watches the process only unless given its own `check`; **never** the readiness check. |
+| `restart.after-failures` | integer | — | Consecutive failures that kill and restart the instance. |
+| `restart.check` | object | *(process)* | Optional own probe — keep it local to the process, never a downstream. |
 | `startup-timeout` | duration | — | Max time to first readiness before the instance is failed. |
 
 Check forms:

@@ -62,43 +62,49 @@ squeezing it in somewhere. See [Storage](storage.md) for volume placement.
 
 ## Health checks
 
-Three questions with different consequences:
+**Readiness and health are two different questions.** Conflating them is a
+classic cause of outages, so Chmura keeps them apart and asks you to answer each
+one consciously.
 
-| Question | Answered by | |
-| --- | --- | --- |
-| How, and how often, do we ask the app? | `check` | the mechanism |
-| May this instance take traffic? | `ready` | a rule over results |
-| Must this instance be killed? | `restart` | a rule over results |
+- **Ready** — *can this instance serve a request right now?* It has started,
+  configured itself, connected to what it needs, and passed whatever checks it
+  runs. A readiness check often reaches beyond the process itself — it may confirm
+  a live connection to a dependency.
+- **Healthy** — *is the process itself still working?* Sometimes "is it alive" is
+  enough; sometimes the process is up but wedged — hung, disconnected, its session
+  expired. A downstream blip should usually **not** make an application unhealthy.
 
-Other orchestrators define a separate probe for each and make you repeat the
-mechanism. In practice the mechanism is one; only the thresholds and consequences
-differ. Chmura separates the layers: a `check` **produces a stream of results**
-and means nothing on its own — the rules give it meaning.
+Readiness governs **traffic**; health governs **restart**. They are two rules:
+
+| Rule | Asks | Consequence | May depend on a dependency? |
+| --- | --- | --- | --- |
+| `ready` | Can it serve? | in or out of traffic | yes — that is often the point |
+| `restart` | Is the process healthy? | kill and restart in the same slot | **no — the process only** |
 
 ```yaml
 applications:
   api:
     health:
-      check:
-        http:
-          path: /healthz
-          port: http
+      check:                    # the readiness probe — may reach a dependency
+        http: { path: /ready, port: http }
         interval: 5s
         timeout: 2s
       ready:
         after-successes: 1
         lost-after-failures: 3
-      restart:
+      restart:                  # opt-in; looks only at the process by default
         after-failures: 6
       startup-timeout: 2m
 ```
 
-This structure lets Chmura enforce a dependency other systems leave to chance:
-
-!!! warning "Killing is never faster than removing from traffic"
-    With a shared check, `restart.after-failures` must be greater than
-    `ready.lost-after-failures`. The reverse — an instance killed before it stops
-    receiving traffic — is a validation error, not something you can misconfigure.
+`health.check` is the **readiness** probe. `restart` is the **health** rule, and
+it never observes the readiness check — by default it watches only the process,
+and you give it its own `check` to look deeper (below). This is the lesson of a
+real incident, built into the model: a readiness check may legitimately test a
+downstream, but the thing that *kills* an instance must look only at the process,
+or one overloaded dependency takes the whole fleet down at once. The load
+balancer's [panic threshold](networking.md#never-route-to-zero) guards the other
+side of the same failure.
 
 ### Check types
 
@@ -126,31 +132,33 @@ HTTP service, so a declaration is often just `path` and `port`.
 
 ### `restart` is a deliberate choice
 
-Omitting `restart` means **the check never kills an instance**. This is not a
-gap: process exit is observed always, with no check at all — a crash is restarted
-in the same slot. The `restart` rule exists only to catch *hangs* — a process
-that is alive but no longer responding. Most apps never need it, and misused it
-turns a blip into a restart storm, so it is opt-in.
+Omitting `restart` means **nothing ever kills a running instance except its own
+exit**. That is not a gap: a process crash is observed always, with no check at
+all, and is restarted in the same slot. The `restart` rule exists only to catch
+*hangs* — a process that is alive but no longer working. Most apps never need it,
+and misused it turns a blip into a restart storm, so it is opt-in.
 
-It does not apply until `ready` has succeeded once; if readiness never arrives
-within `startup-timeout`, the instance is considered failed. That removes the need
-for a separate startup probe.
+By default `restart` watches only the process. To probe deeper — to catch a wedged
+process that is technically alive — give it its own check, and keep that check
+local so it cannot fail on a downstream:
 
-!!! warning "Restart depends only on the process"
-    The classic mistake: a readiness check probes a dependency (a database), and
-    the same check drives killing. The database blips and *every* instance is
-    killed at once — a restart storm exactly when the system is already
-    struggling. So: readiness may depend on dependencies; restart must depend
-    only on the process itself. If the shared check reaches a dependency, give
-    `restart` its own local, cheap check:
+```yaml
+restart:
+  after-failures: 6
+  check:
+    exec: { command: ["/bin/self-check"] }   # the process, not a dependency
+```
 
-    ```yaml
-    restart:
-      after-failures: 6
-      check:
-        exec:
-          command: ["/bin/self-check"]
-    ```
+`restart` does not apply until `ready` has succeeded once; if readiness never
+arrives within `startup-timeout`, the instance is considered failed. That removes
+the need for a separate startup probe.
+
+!!! warning "Never kill on a shared dependency"
+    The classic mistake is pointing the killer at a dependency: the database
+    blips and *every* instance is killed at once — a restart storm exactly when
+    the system is already struggling. In Chmura this is off by default (`restart`
+    never uses the readiness check), and when you do give `restart` a check, it
+    must look at the process, not a downstream.
 
 ### No check is allowed, but never invisible
 
