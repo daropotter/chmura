@@ -54,5 +54,7 @@ nav:
   - Architecture: architecture.md
   - Local dev: local-dev.md
   - Reference:
-      - Manifest: reference/manifest.md
+      - chmura.yaml: reference/manifest.md
+      - cluster.yaml: reference/cluster.md
+      - installation.yaml: reference/installation.md
   - Design decisions: decisions.md
