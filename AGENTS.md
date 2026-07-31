@@ -43,6 +43,21 @@ Chmura is an open-source private-cloud platform with a CLI-first workflow. Read
 
 Full workflow and PR description template: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
+## Responding to review comments
+
+An agent may act on a pull-request review comment that addresses it with `/oc`
+from a trusted collaborator. When it does, it:
+
+- addresses only that comment, with the smallest change, following strict TDD;
+- keeps the tree green (`go test` + `go vet`) before committing;
+- commits with Conventional Commits and pushes to the **PR branch** — never to
+  `main`, and never merges;
+- replies in the comment thread with a short summary of what it changed, or why
+  it made no change;
+- treats a question or a discussion as a reply only, with no code change.
+
+Auto-review on an opened or updated PR is a review only — comments, no edits.
+
 ## Where things are
 
 - [`docs/`](docs/) — the product specification (the model, the CLI contract).
