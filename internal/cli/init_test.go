@@ -22,25 +22,6 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// chdir changes into dir for the test and restores the previous cwd after.
-// Safe here because this package has no parallel tests. (t.Chdir would need
-// go1.24; we keep the module's go1.23 floor.)
-func chdir(t *testing.T, dir string) {
-	t.Helper()
-	old, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := os.Chdir(old); err != nil {
-			t.Fatal(err)
-		}
-	})
-}
-
 func TestInitWritesManifest(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "shop")
 	if err := os.Mkdir(dir, 0o755); err != nil {
@@ -107,7 +88,7 @@ func TestInitNameAndManifestFollowCwdByDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(dir, "Dockerfile"), "FROM scratch\n")
-	chdir(t, dir)
+	t.Chdir(dir)
 
 	if code, out := execInit(t); code != ExitOK {
 		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, out)
@@ -130,7 +111,7 @@ func TestInitNameFollowsDirArgNotCwd(t *testing.T) {
 		}
 	}
 	writeFile(t, filepath.Join(target, "Dockerfile"), "FROM scratch\n")
-	chdir(t, cwd)
+	t.Chdir(cwd)
 
 	if code, out := execInit(t, target); code != ExitOK {
 		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, out)
