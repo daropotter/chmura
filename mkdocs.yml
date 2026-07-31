@@ -61,3 +61,7 @@ nav:
       - cluster.yaml: reference/cluster.md
       - installation.yaml: reference/installation.md
   - Design decisions: decisions.md
+  - Development:
+      - Stack: development/stack.md
+      - Repository layout: development/layout.md
+      - Engineering decisions: development/decisions.md
