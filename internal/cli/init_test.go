@@ -22,6 +22,25 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
+// chdir changes into dir for the test and restores the previous cwd after.
+// Safe here because this package has no parallel tests. (t.Chdir would need
+// go1.24; we keep the module's go1.23 floor.)
+func chdir(t *testing.T, dir string) {
+	t.Helper()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(old); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
 func TestInitWritesManifest(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "shop")
 	if err := os.Mkdir(dir, 0o755); err != nil {
@@ -75,5 +94,60 @@ func TestInitDoesNotOverwrite(t *testing.T) {
 func TestInitRejectsExtraArgs(t *testing.T) {
 	if code, _ := execInit(t, "a", "b"); code != ExitUsage {
 		t.Errorf("exit = %d, want %d", code, ExitUsage)
+	}
+}
+
+// The next two pin a subtle coupling: the project name, the chmura.yaml write
+// location, and the Dockerfile lookup must all follow the SAME directory — the
+// arg, or cwd by default — never diverge (e.g. name from cwd, file from the arg).
+
+func TestInitNameAndManifestFollowCwdByDefault(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "shop")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(dir, "Dockerfile"), "FROM scratch\n")
+	chdir(t, dir)
+
+	if code, out := execInit(t); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, out)
+	}
+	b, err := os.ReadFile("chmura.yaml") // relative to cwd
+	if err != nil {
+		t.Fatalf("chmura.yaml not written into cwd: %v", err)
+	}
+	if !strings.Contains(string(b), "name: shop") {
+		t.Errorf("name should come from cwd (shop)\n%s", string(b))
+	}
+}
+
+func TestInitNameFollowsDirArgNotCwd(t *testing.T) {
+	cwd := filepath.Join(t.TempDir(), "outer")
+	target := filepath.Join(t.TempDir(), "api")
+	for _, d := range []string{cwd, target} {
+		if err := os.Mkdir(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(t, filepath.Join(target, "Dockerfile"), "FROM scratch\n")
+	chdir(t, cwd)
+
+	if code, out := execInit(t, target); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, out)
+	}
+
+	b, err := os.ReadFile(filepath.Join(target, "chmura.yaml"))
+	if err != nil {
+		t.Fatalf("chmura.yaml not written into the target dir: %v", err)
+	}
+	content := string(b)
+	if !strings.Contains(content, "name: api") {
+		t.Errorf("name should follow the dir arg (api), not cwd (outer)\n%s", content)
+	}
+	if strings.Contains(content, "name: outer") {
+		t.Errorf("name must not come from cwd\n%s", content)
+	}
+	if _, err := os.Stat(filepath.Join(cwd, "chmura.yaml")); !os.IsNotExist(err) {
+		t.Error("chmura.yaml must not be written into cwd when a dir arg is given")
 	}
 }
