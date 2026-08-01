@@ -111,6 +111,17 @@ documented — not a historical log — so terminology matches the rest of these
 4. `chmura init` infers only from `Dockerfile` and `docker-compose`, never from
     application behavior; what it cannot derive it writes as commented scaffolding,
     and it never copies a secret value.
+5. `chmura init` scans at an explicit depth — `--depth 0` (the directory itself,
+    default), `1` (immediate subdirectories), or `all` (the whole tree) — and
+    never guesses which applications to include: an application is a directory
+    that holds a `Dockerfile`.
+6. An application's name is the kebab-cased name of the directory that holds its
+    `Dockerfile`; the project's name is the kebab-cased name of the directory
+    where `init` runs. Two directories that normalize to the same name are a
+    precise error naming both, never a silent rename.
+7. Scanning skips hidden directories and directories that are themselves a
+    separate Chmura project (they contain a `chmura.yaml`) — a nested project is
+    never folded into another project's manifest.
 5. CPU is expressed in cores, with **decimals canonical** (`0.5`). The
     Kubernetes-style millicore form (`500m`) is accepted, not rejected — but
     decimals are the front door, since Chmura hides orchestrator jargon.
