@@ -37,8 +37,17 @@ Start at [`docs/index.md`](docs/index.md).
 ## Repository layout
 
 ```text
+cmd/            binary entrypoints (chmura, chmura-server, chmura-agent, chmura-dev)
+internal/       implementation
 docs/           documentation (Markdown)
   concepts/     the mental model — what the pieces are
   reference/    manifest schema and worked examples
+  development/  stack, repo layout, engineering decisions
 mkdocs.yml      docs-site configuration
 ```
+
+## Contributing
+
+Chmura is in early implementation. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the
+workflow, and [`AGENTS.md`](AGENTS.md) for the shared context AI agents and humans
+work from.

@@ -13,7 +13,3 @@ bin/
 .DS_Store
 
 .claude/
-
-# Internal development files
-.dev/
-AGENTS.md
