@@ -50,6 +50,7 @@ orchestrator underneath.`,
 
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newDoctorCmd())
+	root.AddCommand(newInitCmd())
 	return root
 }
 
