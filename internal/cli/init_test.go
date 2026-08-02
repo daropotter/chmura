@@ -318,6 +318,40 @@ func TestInitScanErrorDoesNotWritePartialManifest(t *testing.T) {
 	if code != ExitError {
 		t.Fatalf("exit = %d, want %d (a scan error must fail, not write a partial manifest)\n%s", code, ExitError, out)
 	}
+	if err := os.Chmod(filepath.Join(root, "zz"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "chmura.yaml")); !os.IsNotExist(err) {
+		t.Error("chmura.yaml must not be written when the scan cannot complete")
+	}
+}
+
+// The depth-1 path reads the root's entries directly (os.ReadDir); a failure
+// there must also abort before writing — the sibling of the WalkDir case.
+func TestInitDepthOneScanErrorFails(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; an unreadable directory is still readable")
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no directory read permissions to revoke")
+	}
+	root := filepath.Join(t.TempDir(), "mono")
+	if err := os.MkdirAll(filepath.Join(root, "api"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(root, "api/Dockerfile"), "FROM scratch\n")
+	if err := os.Chmod(root, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(root, 0o755) })
+
+	code, out := execInit(t, "--depth", "1", root)
+	if code != ExitError {
+		t.Fatalf("exit = %d, want %d (a read failure at depth 1 must fail, not write a partial manifest)\n%s", code, ExitError, out)
+	}
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := os.Stat(filepath.Join(root, "chmura.yaml")); !os.IsNotExist(err) {
 		t.Error("chmura.yaml must not be written when the scan cannot complete")
 	}
