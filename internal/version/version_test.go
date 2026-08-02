@@ -50,3 +50,9 @@ func TestVersionHasDefault(t *testing.T) {
 		t.Fatal("Version must have a non-empty default (fallback when not set via -ldflags)")
 	}
 }
+
+func TestBuildInfoHasDefaults(t *testing.T) {
+	if Commit == "" || Date == "" {
+		t.Fatal("Commit and Date must have non-empty defaults (fallback when not set via -ldflags)")
+	}
+}

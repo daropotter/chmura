@@ -10,6 +10,14 @@ import (
 // release builds override it via -ldflags "-X .../version.Version=<v>".
 var Version = "0.0.0-dev"
 
+// Commit and Date describe the build; release builds inject them via -ldflags.
+// They are not shown by the bare `version` output, but are available for
+// diagnostics.
+var (
+	Commit = "none"
+	Date   = "unknown"
+)
+
 // Run handles a version request common to every binary. If args ask for the
 // version — the --version flag anywhere, or the "version" subcommand first —
 // it writes the version to stdout and reports handled=true with exit code 0.

@@ -1,0 +1,62 @@
+version: 2
+
+project_name: chmura
+
+builds:
+  - id: chmura
+    main: ./cmd/chmura
+    binary: chmura
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    ldflags: &ldflags
+      - -s -w
+      - -X github.com/daropotter/chmura/internal/version.Version={{ .Version }}
+      - -X github.com/daropotter/chmura/internal/version.Commit={{ .FullCommit }}
+      - -X github.com/daropotter/chmura/internal/version.Date={{ .CommitDate }}
+  - id: chmura-server
+    main: ./cmd/chmura-server
+    binary: chmura-server
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    ldflags: *ldflags
+  - id: chmura-agent
+    main: ./cmd/chmura-agent
+    binary: chmura-agent
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    ldflags: *ldflags
+  - id: chmura-dev
+    main: ./cmd/chmura-dev
+    binary: chmura-dev
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    ldflags: *ldflags
+
+# One archive per OS/arch, bundling all four binaries.
+archives:
+  - id: all
+    ids: [chmura, chmura-server, chmura-agent, chmura-dev]
+    name_template: "chmura_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  draft: false
+  prerelease: auto
+
+changelog:
+  use: github
