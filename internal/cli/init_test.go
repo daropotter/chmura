@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -287,6 +288,38 @@ func TestInitNonexistentDir(t *testing.T) {
 	code, out := execInit(t, filepath.Join(t.TempDir(), "missing"))
 	if code != ExitUsage {
 		t.Errorf("exit = %d, want %d\n%s", code, ExitUsage, out)
+	}
+}
+
+// A mid-scan failure must fail the command and write nothing — a partial
+// manifest would silently omit every application below the unreadable subtree.
+func TestInitScanErrorDoesNotWritePartialManifest(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; an unreadable directory is still readable")
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no directory read permissions to revoke")
+	}
+	root := filepath.Join(t.TempDir(), "mono")
+	// "aa" sorts before "zz", so the readable application is collected before
+	// the walk hits the unreadable directory — the partial-manifest case.
+	for _, d := range []string{filepath.Join(root, "aa"), filepath.Join(root, "zz")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(t, filepath.Join(root, "aa/Dockerfile"), "FROM scratch\n")
+	if err := os.Chmod(filepath.Join(root, "zz"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(filepath.Join(root, "zz"), 0o755) })
+
+	code, out := execInit(t, "--depth", "all", root)
+	if code != ExitError {
+		t.Fatalf("exit = %d, want %d (a scan error must fail, not write a partial manifest)\n%s", code, ExitError, out)
+	}
+	if _, err := os.Stat(filepath.Join(root, "chmura.yaml")); !os.IsNotExist(err) {
+		t.Error("chmura.yaml must not be written when the scan cannot complete")
 	}
 }
 

@@ -259,9 +259,9 @@ for you to verify, rather than guessed values.
 
 | `--depth` | Scans | Finds |
 | --- | --- | --- |
-| `0` *(default)* | the given directory only | one application — the directory itself |
-| `1` | the directory and its immediate subdirectories | one application per subdirectory that holds a `Dockerfile` |
-| `all` | the whole tree below the directory | every directory that holds a `Dockerfile` |
+| `0` *(default)* | the given directory only | the directory itself, if it holds a `Dockerfile` |
+| `1` | the directory and its immediate subdirectories | the directory and each immediate subdirectory that holds a `Dockerfile` |
+| `all` | the whole tree below the directory | every directory in the tree that holds a `Dockerfile` |
 
 An application's name is the **kebab-cased name of the directory that holds its
 `Dockerfile`**; the project's name is the kebab-cased name of the directory where

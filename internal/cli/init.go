@@ -133,7 +133,11 @@ func findApps(dir string, depth Depth) ([]app, error) {
 		if hasDockerfile(dir) {
 			found = append(found, dir)
 		}
-		for _, child := range directChildren(dir) {
+		children, err := directChildren(dir)
+		if err != nil {
+			return nil, err
+		}
+		for _, child := range children {
 			if isSkipped(child) {
 				continue
 			}
@@ -145,7 +149,7 @@ func findApps(dir string, depth Depth) ([]app, error) {
 		if hasDockerfile(dir) {
 			found = append(found, dir)
 		}
-		filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
@@ -159,7 +163,9 @@ func findApps(dir string, depth Depth) ([]app, error) {
 				found = append(found, path)
 			}
 			return nil
-		})
+		}); err != nil {
+			return nil, err
+		}
 	}
 
 	apps := make([]app, 0, len(found))
@@ -194,10 +200,11 @@ func hasDockerfile(dir string) bool {
 }
 
 // directChildren lists the immediate subdirectories of dir, in sorted order.
-func directChildren(dir string) []string {
+// A read failure is returned, never silently dropped.
+func directChildren(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	var out []string
 	for _, e := range entries {
@@ -205,7 +212,7 @@ func directChildren(dir string) []string {
 			out = append(out, filepath.Join(dir, e.Name()))
 		}
 	}
-	return out
+	return out, nil
 }
 
 // isSkipped reports whether a directory is not a candidate: hidden, or its own
