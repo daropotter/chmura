@@ -9,6 +9,9 @@ __pycache__/
 # Go build output
 bin/
 
+# goreleaser output
+dist/
+
 # OS
 .DS_Store
 
