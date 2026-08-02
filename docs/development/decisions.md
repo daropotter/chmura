@@ -100,3 +100,20 @@ tested on 1.23 while development was on 1.25.5; this aligns them (no `ci.yml`
 change). It also unlocks `t.Chdir` (1.24) and `testing/synctest` (1.25); the
 latter will matter for testing the concurrent agent, reconcile loops, and control
 plane.
+
+## `init` application detection: a directory walk, not a manifest guess
+
+`chmura init` discovers applications by walking the tree (`--depth 0|1|all`) and
+treating any directory that holds a `Dockerfile` as an application, named by the
+kebab-cased basename of its directory; the project name is the kebab-cased
+basename of the directory where `init` runs. Hidden directories and directories
+that contain their own `chmura.yaml` are skipped and not descended into. Two
+names that normalize to the same value are a precise error, never a silent rename.
+
+**Why.** Deterministic, declarative-only inference that needs no wizard and
+guesses nothing — consistent with "nothing is created silently". The `name` is
+recoverable from the filesystem layout, so `init` output is reproducible.
+
+**Consequences.** `docker-compose` remains a product-spec inference source but its
+implementation (service-name extraction) is deferred until a YAML parser is
+adopted; this PR only scans Dockerfiles.

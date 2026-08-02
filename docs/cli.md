@@ -253,9 +253,23 @@ file exists.
 Detection reads **only declarative sources** — `Dockerfile` and `docker-compose`
 — never the application's behavior. What it cannot derive (health checks,
 endpoints, env/secret references, volumes) it writes as **commented scaffolding**
-for you to verify, rather than guessed values. In a monorepo with several
-Dockerfiles, `init` without `-i` does not guess which apps to include; the wizard
-lets you pick and name them.
+for you to verify, rather than guessed values.
+
+`--depth` controls how deep `init` scans for applications:
+
+| `--depth` | Scans | Finds |
+| --- | --- | --- |
+| `0` *(default)* | the given directory only | the directory itself, if it holds a `Dockerfile` |
+| `1` | the directory and its immediate subdirectories | the directory and each immediate subdirectory that holds a `Dockerfile` |
+| `all` | the whole tree below the directory | every directory in the tree that holds a `Dockerfile` |
+
+An application's name is the **kebab-cased name of the directory that holds its
+`Dockerfile`**; the project's name is the kebab-cased name of the directory where
+`init` runs. Two directories that normalize to the same name stop `init` with an
+error naming both — it never renames silently. Hidden directories and directories
+that are their own Chmura project (they contain a `chmura.yaml`) are skipped:
+scanning never reaches into `.github/`, a vendored directory, or a nested
+project's tree.
 
 An existing manifest is not overwritten. `--update` fills in detected values
 while keeping your configuration; `--force` regenerates from scratch.

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -99,6 +100,276 @@ func TestInitNameAndManifestFollowCwdByDefault(t *testing.T) {
 	}
 	if !strings.Contains(string(b), "name: shop") {
 		t.Errorf("name should come from cwd (shop)\n%s", string(b))
+	}
+}
+
+func readManifest(t *testing.T, dir string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(dir, "chmura.yaml"))
+	if err != nil {
+		t.Fatalf("chmura.yaml not written: %v", err)
+	}
+	return string(b)
+}
+
+func TestInitDepthChildrenFindsDirectSubdirs(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "mono")
+	for _, d := range []string{root, filepath.Join(root, "api"), filepath.Join(root, "web"), filepath.Join(root, "web/deep")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(t, filepath.Join(root, "api/Dockerfile"), "FROM scratch\n")
+	writeFile(t, filepath.Join(root, "web/Dockerfile"), "FROM scratch\n")
+	writeFile(t, filepath.Join(root, "web/deep/Dockerfile"), "FROM scratch\n")
+
+	if code, out := execInit(t, "--depth", "1", root); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, out)
+	}
+
+	content := readManifest(t, root)
+	for _, want := range []string{
+		"name: mono",
+		"  api:",
+		"    context: api",
+		"  web:",
+		"    context: web",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("manifest missing %q\n%s", want, content)
+		}
+	}
+	if strings.Contains(content, "deep") {
+		t.Errorf("depth 1 must not descend below direct subdirectories\n%s", content)
+	}
+}
+
+func TestInitDepthAllFindsWholeTree(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "mono")
+	for _, d := range []string{root, filepath.Join(root, "services/api"), filepath.Join(root, "tools/scripts/deploy")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(t, filepath.Join(root, "Dockerfile"), "FROM scratch\n")
+	writeFile(t, filepath.Join(root, "services/api/Dockerfile"), "FROM scratch\n")
+	writeFile(t, filepath.Join(root, "tools/scripts/deploy/Dockerfile"), "FROM scratch\n")
+
+	if code, out := execInit(t, "--depth", "all", root); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, out)
+	}
+
+	content := readManifest(t, root)
+	for _, want := range []string{
+		"name: mono",
+		"  mono:",
+		"    context: .",
+		"  api:",
+		"    context: services/api",
+		"  deploy:",
+		"    context: tools/scripts/deploy",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("manifest missing %q\n%s", want, content)
+		}
+	}
+}
+
+func TestInitDepthAllSkipsHiddenAndNestedProjects(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "mono")
+	separate := filepath.Join(root, "separate")
+	for _, d := range []string{root, filepath.Join(root, "web"), filepath.Join(root, ".github"), separate, filepath.Join(separate, "nested")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(t, filepath.Join(root, "web/Dockerfile"), "FROM scratch\n")
+	writeFile(t, filepath.Join(root, ".github/Dockerfile"), "FROM scratch\n")
+	writeFile(t, filepath.Join(separate, "Dockerfile"), "FROM scratch\n")
+	writeFile(t, filepath.Join(separate, "chmura.yaml"), "name: separate\n")
+	writeFile(t, filepath.Join(separate, "nested/Dockerfile"), "FROM scratch\n")
+
+	if code, out := execInit(t, "--depth", "all", root); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, out)
+	}
+
+	content := readManifest(t, root)
+	if !strings.Contains(content, "  web:") {
+		t.Errorf("a real application should be found\n%s", content)
+	}
+	if strings.Contains(content, ".github") {
+		t.Errorf("hidden directories must be skipped\n%s", content)
+	}
+	if strings.Contains(content, "separate") {
+		t.Errorf("a nested chmura project must be skipped, not descended into\n%s", content)
+	}
+}
+
+func TestInitDepthAllNoSource(t *testing.T) {
+	dir := t.TempDir()
+	if code, out := execInit(t, "--depth", "all", dir); code != ExitUsage {
+		t.Errorf("exit = %d, want %d\n%s", code, ExitUsage, out)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "chmura.yaml")); !os.IsNotExist(err) {
+		t.Error("chmura.yaml should not be written when no source is found")
+	}
+}
+
+func TestInitDepthDefaultsToDirOnly(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "mono")
+	if err := os.MkdirAll(filepath.Join(root, "services/api"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(root, "Dockerfile"), "FROM scratch\n")
+	writeFile(t, filepath.Join(root, "services/api/Dockerfile"), "FROM scratch\n")
+
+	if code, out := execInit(t, root); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, out)
+	}
+
+	content := readManifest(t, root)
+	if !strings.Contains(content, "  mono:") {
+		t.Errorf("default depth should find the directory's own Dockerfile\n%s", content)
+	}
+	if strings.Contains(content, "services/api") {
+		t.Errorf("default depth must not scan subdirectories\n%s", content)
+	}
+}
+
+func TestInitDepthInvalidValue(t *testing.T) {
+	for _, depth := range []string{"2", "bogus", "-1"} {
+		if code, out := execInit(t, "--depth", depth, t.TempDir()); code != ExitUsage {
+			t.Errorf("--depth %s: exit = %d, want %d\n%s", depth, code, ExitUsage, out)
+		}
+	}
+}
+
+func TestInitNameCollisionIsPreciseError(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "mono")
+	for _, d := range []string{filepath.Join(root, "user-api"), filepath.Join(root, "user_api")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(t, filepath.Join(root, "user-api/Dockerfile"), "FROM scratch\n")
+	writeFile(t, filepath.Join(root, "user_api/Dockerfile"), "FROM scratch\n")
+
+	code, out := execInit(t, "--depth", "1", root)
+	if code != ExitUsage {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitUsage, out)
+	}
+	for _, want := range []string{"user-api", "user_api", "normalize"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("collision error should name both sources and the colliding name; missing %q\n%s", want, out)
+		}
+	}
+}
+
+func TestInitNormalizesNames(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "My Service")
+	if err := os.MkdirAll(filepath.Join(root, "user_API"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(root, "user_API/Dockerfile"), "FROM scratch\n")
+
+	if code, out := execInit(t, "--depth", "1", root); code != ExitOK {
+		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, out)
+	}
+
+	content := readManifest(t, root)
+	for _, want := range []string{"name: my-service", "  user-api:", "    context: user_API"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("manifest missing %q\n%s", want, content)
+		}
+	}
+}
+
+func TestInitNonexistentDir(t *testing.T) {
+	code, out := execInit(t, filepath.Join(t.TempDir(), "missing"))
+	if code != ExitUsage {
+		t.Errorf("exit = %d, want %d\n%s", code, ExitUsage, out)
+	}
+}
+
+// A mid-scan failure must fail the command and write nothing — a partial
+// manifest would silently omit every application below the unreadable subtree.
+func TestInitScanErrorDoesNotWritePartialManifest(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; an unreadable directory is still readable")
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no directory read permissions to revoke")
+	}
+	root := filepath.Join(t.TempDir(), "mono")
+	// "aa" sorts before "zz", so the readable application is collected before
+	// the walk hits the unreadable directory — the partial-manifest case.
+	for _, d := range []string{filepath.Join(root, "aa"), filepath.Join(root, "zz")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(t, filepath.Join(root, "aa/Dockerfile"), "FROM scratch\n")
+	if err := os.Chmod(filepath.Join(root, "zz"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(filepath.Join(root, "zz"), 0o755) })
+
+	code, out := execInit(t, "--depth", "all", root)
+	if code != ExitError {
+		t.Fatalf("exit = %d, want %d (a scan error must fail, not write a partial manifest)\n%s", code, ExitError, out)
+	}
+	if err := os.Chmod(filepath.Join(root, "zz"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "chmura.yaml")); !os.IsNotExist(err) {
+		t.Error("chmura.yaml must not be written when the scan cannot complete")
+	}
+}
+
+// The depth-1 path reads the root's entries directly (os.ReadDir); a failure
+// there must also abort before writing — the sibling of the WalkDir case.
+func TestInitDepthOneScanErrorFails(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; an unreadable directory is still readable")
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no directory read permissions to revoke")
+	}
+	root := filepath.Join(t.TempDir(), "mono")
+	if err := os.MkdirAll(filepath.Join(root, "api"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(root, "api/Dockerfile"), "FROM scratch\n")
+	if err := os.Chmod(root, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(root, 0o755) })
+
+	code, out := execInit(t, "--depth", "1", root)
+	if code != ExitError {
+		t.Fatalf("exit = %d, want %d (a read failure at depth 1 must fail, not write a partial manifest)\n%s", code, ExitError, out)
+	}
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "chmura.yaml")); !os.IsNotExist(err) {
+		t.Error("chmura.yaml must not be written when the scan cannot complete")
+	}
+}
+
+// A directory literally named "Dockerfile" can never be built as a Dockerfile,
+// so it is not a source — detection must require a regular file.
+func TestInitIgnoresDirectoryNamedDockerfile(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "mono")
+	if err := os.MkdirAll(filepath.Join(root, "Dockerfile"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if code, out := execInit(t, root); code != ExitUsage {
+		t.Fatalf("exit = %d, want %d (a directory named Dockerfile is not a source)\n%s", code, ExitUsage, out)
+	}
+	if _, err := os.Stat(filepath.Join(root, "chmura.yaml")); !os.IsNotExist(err) {
+		t.Error("chmura.yaml must not be written when no real source is found")
 	}
 }
 
