@@ -194,9 +194,11 @@ func findApps(dir string, depth Depth) ([]app, error) {
 	return apps, nil
 }
 
+// hasDockerfile reports whether dir holds a regular Dockerfile. A directory
+// named "Dockerfile" is not a source — it could never be built as one.
 func hasDockerfile(dir string) bool {
-	_, err := os.Stat(filepath.Join(dir, "Dockerfile"))
-	return err == nil
+	fi, err := os.Stat(filepath.Join(dir, "Dockerfile"))
+	return err == nil && fi.Mode().IsRegular()
 }
 
 // directChildren lists the immediate subdirectories of dir, in sorted order.

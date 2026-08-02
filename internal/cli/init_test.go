@@ -357,6 +357,22 @@ func TestInitDepthOneScanErrorFails(t *testing.T) {
 	}
 }
 
+// A directory literally named "Dockerfile" can never be built as a Dockerfile,
+// so it is not a source — detection must require a regular file.
+func TestInitIgnoresDirectoryNamedDockerfile(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "mono")
+	if err := os.MkdirAll(filepath.Join(root, "Dockerfile"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if code, out := execInit(t, root); code != ExitUsage {
+		t.Fatalf("exit = %d, want %d (a directory named Dockerfile is not a source)\n%s", code, ExitUsage, out)
+	}
+	if _, err := os.Stat(filepath.Join(root, "chmura.yaml")); !os.IsNotExist(err) {
+		t.Error("chmura.yaml must not be written when no real source is found")
+	}
+}
+
 func TestInitNameFollowsDirArgNotCwd(t *testing.T) {
 	cwd := filepath.Join(t.TempDir(), "outer")
 	target := filepath.Join(t.TempDir(), "api")
