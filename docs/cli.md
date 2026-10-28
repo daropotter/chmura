@@ -206,6 +206,19 @@ chmura remote inspect company
 chmura remote remove company
 ```
 
+For direct, stateless installation discovery, the implemented command accepts an
+explicit endpoint:
+
+```bash
+chmura remote inspect --endpoint https://chmura.company.example
+chmura remote inspect --endpoint https://chmura.home:7443 --ca-cert home-ca.pem
+```
+
+It reports the server version, supported API versions, installation profile and
+available features. HTTPS and certificate verification are required; `--ca-cert`
+adds explicit trust for a private CA. Discovery rejects incompatible API versions
+and follows no redirects. Named remote registration and login are later increments.
+
 ### `chmura remote use`
 
 One command sets either the default remote or the project's remembered target —

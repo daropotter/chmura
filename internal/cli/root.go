@@ -51,6 +51,7 @@ orchestrator underneath.`,
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newDoctorCmd())
 	root.AddCommand(newInitCmd())
+	root.AddCommand(newRemoteCmd())
 	return root
 }
 
