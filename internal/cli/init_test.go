@@ -2,11 +2,14 @@ package cli
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/goccy/go-yaml"
 )
 
 func execInit(t *testing.T, args ...string) (int, string) {
@@ -34,15 +37,67 @@ func TestInitWritesManifest(t *testing.T) {
 		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, out)
 	}
 
-	b, err := os.ReadFile(filepath.Join(dir, "chmura.yaml"))
-	if err != nil {
-		t.Fatalf("chmura.yaml not written: %v", err)
+	manifest := parseInitManifest(t, dir)
+	if manifest.Version != 1 || manifest.Name != "shop" {
+		t.Errorf("manifest version/name = %d/%#v, want 1/shop", manifest.Version, manifest.Name)
 	}
-	content := string(b)
-	for _, want := range []string{"version: 1", "name: shop", "dockerfile: Dockerfile"} {
-		if !strings.Contains(content, want) {
-			t.Errorf("manifest missing %q\n%s", want, content)
-		}
+	assertInitApplications(t, manifest, map[string]string{"shop": "."})
+}
+
+func TestInitPreservesYAMLStrings(t *testing.T) {
+	cases := []struct {
+		name, project, directory, application string
+	}{
+		{"plain strings", "shop", "api", "api"},
+		{"null", "null", "null", "null"},
+		{"booleans", "false", "true", "true"},
+		{"integers", "123", "456", "456"},
+		{"numeric notation", "1e3", "0x10", "0x10"},
+		{"colon", "shop", "api: v1", "api-v1"},
+		{"comment", "shop", "api # v1", "api-v1"},
+		{"sequence", "shop", "[api]", "api"},
+		{"mapping", "shop", "{api}", "api"},
+		{"alias", "shop", "*api", "api"},
+		{"anchor", "shop", "&api", "api"},
+		{"newline", "shop", "api\nv1", "api-v1"},
+		{"tab", "shop", "api\tv1", "api-v1"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := filepath.Join(t.TempDir(), tc.project)
+			if err := os.MkdirAll(filepath.Join(root, tc.directory), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, filepath.Join(root, tc.directory, "Dockerfile"), "FROM scratch\n")
+			if code, out := execInit(t, "--depth", "1", root); code != ExitOK {
+				t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, out)
+			}
+
+			// Decode without string-typed fields so implicit YAML scalar types
+			// cannot be silently converted back into the strings we expected.
+			var manifest map[string]any
+			if err := yaml.Unmarshal([]byte(readManifest(t, root)), &manifest); err != nil {
+				t.Fatalf("generated manifest is not valid YAML: %v", err)
+			}
+			if got := manifest["name"]; got != tc.project {
+				t.Errorf("project name = %#v (%T), want string %q", got, got, tc.project)
+			}
+			applications, ok := manifest["applications"].(map[string]any)
+			if !ok || len(applications) != 1 {
+				t.Fatalf("applications = %#v, want one application", manifest["applications"])
+			}
+			application, ok := applications[tc.application].(map[string]any)
+			if !ok {
+				t.Fatalf("application %q missing from %#v", tc.application, applications)
+			}
+			source, ok := application["source"].(map[string]any)
+			if !ok {
+				t.Fatalf("source = %#v, want a mapping", application["source"])
+			}
+			if got := source["context"]; got != tc.directory {
+				t.Errorf("build context = %#v (%T), want string %q", got, got, tc.directory)
+			}
+		})
 	}
 }
 
@@ -73,6 +128,86 @@ func TestInitDoesNotOverwrite(t *testing.T) {
 	}
 }
 
+func TestInitDoesNotFollowManifestSymlinks(t *testing.T) {
+	for _, targetExists := range []bool{false, true} {
+		name := "missing target"
+		if targetExists {
+			name = "existing target"
+		}
+		t.Run(name, func(t *testing.T) {
+			parent := t.TempDir()
+			dir := filepath.Join(parent, "project")
+			if err := os.Mkdir(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, filepath.Join(dir, "Dockerfile"), "FROM scratch\n")
+			target := filepath.Join(parent, "outside.yaml")
+			const original = "name: keep-me\n"
+			if targetExists {
+				writeFile(t, target, original)
+			}
+			manifest := filepath.Join(dir, "chmura.yaml")
+			if err := os.Symlink(target, manifest); err != nil {
+				t.Fatal(err)
+			}
+
+			if code, out := execInit(t, dir); code != ExitUsage {
+				t.Errorf("exit = %d, want %d when a manifest symlink exists\n%s", code, ExitUsage, out)
+			}
+			if got, err := os.Readlink(manifest); err != nil || got != target {
+				t.Errorf("manifest symlink = %q, %v; want unchanged target %q", got, err, target)
+			}
+			content, err := os.ReadFile(target)
+			if targetExists {
+				if err != nil || string(content) != original {
+					t.Errorf("symlink target was modified: %q, %v", content, err)
+				}
+			} else if !os.IsNotExist(err) {
+				t.Errorf("init must not create the symlink target: %q, %v", content, err)
+			}
+		})
+	}
+}
+
+func TestInitConcurrentCreationDoesNotOverwrite(t *testing.T) {
+	root := t.TempDir()
+	for i := range 32 {
+		dir := filepath.Join(root, fmt.Sprintf("app-%d", i))
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, filepath.Join(dir, "Dockerfile"), "FROM scratch\n")
+	}
+	const workers = 16
+	start := make(chan struct{})
+	codes := make(chan int, workers)
+	for range workers {
+		go func() {
+			<-start
+			code, _ := execInit(t, "--depth", "1", root)
+			codes <- code
+		}()
+	}
+	close(start)
+	successes := 0
+	for range workers {
+		switch code := <-codes; code {
+		case ExitOK:
+			successes++
+		case ExitUsage:
+			// A different invocation created the manifest first.
+		default:
+			t.Errorf("exit = %d, want success or an existing-manifest error", code)
+		}
+	}
+	if successes != 1 {
+		t.Errorf("%d concurrent invocations succeeded, want exactly one", successes)
+	}
+	if got := len(parseInitManifest(t, root).Applications); got != 32 {
+		t.Errorf("manifest has %d applications, want 32", got)
+	}
+}
+
 func TestInitRejectsExtraArgs(t *testing.T) {
 	if code, _ := execInit(t, "a", "b"); code != ExitUsage {
 		t.Errorf("exit = %d, want %d", code, ExitUsage)
@@ -94,12 +229,8 @@ func TestInitNameAndManifestFollowCwdByDefault(t *testing.T) {
 	if code, out := execInit(t); code != ExitOK {
 		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, out)
 	}
-	b, err := os.ReadFile("chmura.yaml") // relative to cwd
-	if err != nil {
-		t.Fatalf("chmura.yaml not written into cwd: %v", err)
-	}
-	if !strings.Contains(string(b), "name: shop") {
-		t.Errorf("name should come from cwd (shop)\n%s", string(b))
+	if got := parseInitManifest(t, ".").Name; got != "shop" {
+		t.Errorf("name should come from cwd: got %#v, want shop", got)
 	}
 }
 
@@ -110,6 +241,43 @@ func readManifest(t *testing.T, dir string) string {
 		t.Fatalf("chmura.yaml not written: %v", err)
 	}
 	return string(b)
+}
+
+type parsedInitManifest struct {
+	Version      int `yaml:"version"`
+	Name         any `yaml:"name"`
+	Applications map[string]struct {
+		Source struct {
+			Context    any    `yaml:"context"`
+			Dockerfile string `yaml:"dockerfile"`
+		} `yaml:"source"`
+	} `yaml:"applications"`
+}
+
+func parseInitManifest(t *testing.T, dir string) parsedInitManifest {
+	t.Helper()
+	var manifest parsedInitManifest
+	if err := yaml.Unmarshal([]byte(readManifest(t, dir)), &manifest); err != nil {
+		t.Fatalf("generated manifest is not valid YAML: %v", err)
+	}
+	return manifest
+}
+
+func assertInitApplications(t *testing.T, manifest parsedInitManifest, want map[string]string) {
+	t.Helper()
+	if len(manifest.Applications) != len(want) {
+		t.Errorf("applications = %#v, want %v", manifest.Applications, want)
+	}
+	for name, context := range want {
+		application, ok := manifest.Applications[name]
+		if !ok {
+			t.Errorf("application %q missing", name)
+			continue
+		}
+		if application.Source.Context != context || application.Source.Dockerfile != "Dockerfile" {
+			t.Errorf("application %q source = %#v, want context %q and Dockerfile", name, application.Source, context)
+		}
+	}
 }
 
 func TestInitDepthChildrenFindsDirectSubdirs(t *testing.T) {
@@ -127,21 +295,11 @@ func TestInitDepthChildrenFindsDirectSubdirs(t *testing.T) {
 		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, out)
 	}
 
-	content := readManifest(t, root)
-	for _, want := range []string{
-		"name: mono",
-		"  api:",
-		"    context: api",
-		"  web:",
-		"    context: web",
-	} {
-		if !strings.Contains(content, want) {
-			t.Errorf("manifest missing %q\n%s", want, content)
-		}
+	manifest := parseInitManifest(t, root)
+	if manifest.Name != "mono" {
+		t.Errorf("project name = %#v, want mono", manifest.Name)
 	}
-	if strings.Contains(content, "deep") {
-		t.Errorf("depth 1 must not descend below direct subdirectories\n%s", content)
-	}
+	assertInitApplications(t, manifest, map[string]string{"api": "api", "web": "web"})
 }
 
 func TestInitDepthAllFindsWholeTree(t *testing.T) {
@@ -159,20 +317,9 @@ func TestInitDepthAllFindsWholeTree(t *testing.T) {
 		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, out)
 	}
 
-	content := readManifest(t, root)
-	for _, want := range []string{
-		"name: mono",
-		"  mono:",
-		"    context: .",
-		"  api:",
-		"    context: services/api",
-		"  deploy:",
-		"    context: tools/scripts/deploy",
-	} {
-		if !strings.Contains(content, want) {
-			t.Errorf("manifest missing %q\n%s", want, content)
-		}
-	}
+	assertInitApplications(t, parseInitManifest(t, root), map[string]string{
+		"mono": ".", "api": "services/api", "deploy": "tools/scripts/deploy",
+	})
 }
 
 func TestInitDepthAllSkipsHiddenAndNestedProjects(t *testing.T) {
@@ -193,16 +340,7 @@ func TestInitDepthAllSkipsHiddenAndNestedProjects(t *testing.T) {
 		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, out)
 	}
 
-	content := readManifest(t, root)
-	if !strings.Contains(content, "  web:") {
-		t.Errorf("a real application should be found\n%s", content)
-	}
-	if strings.Contains(content, ".github") {
-		t.Errorf("hidden directories must be skipped\n%s", content)
-	}
-	if strings.Contains(content, "separate") {
-		t.Errorf("a nested chmura project must be skipped, not descended into\n%s", content)
-	}
+	assertInitApplications(t, parseInitManifest(t, root), map[string]string{"web": "web"})
 }
 
 func TestInitDepthAllNoSource(t *testing.T) {
@@ -227,13 +365,7 @@ func TestInitDepthDefaultsToDirOnly(t *testing.T) {
 		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, out)
 	}
 
-	content := readManifest(t, root)
-	if !strings.Contains(content, "  mono:") {
-		t.Errorf("default depth should find the directory's own Dockerfile\n%s", content)
-	}
-	if strings.Contains(content, "services/api") {
-		t.Errorf("default depth must not scan subdirectories\n%s", content)
-	}
+	assertInitApplications(t, parseInitManifest(t, root), map[string]string{"mono": "."})
 }
 
 func TestInitDepthInvalidValue(t *testing.T) {
@@ -276,12 +408,11 @@ func TestInitNormalizesNames(t *testing.T) {
 		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, out)
 	}
 
-	content := readManifest(t, root)
-	for _, want := range []string{"name: my-service", "  user-api:", "    context: user_API"} {
-		if !strings.Contains(content, want) {
-			t.Errorf("manifest missing %q\n%s", want, content)
-		}
+	manifest := parseInitManifest(t, root)
+	if manifest.Name != "my-service" {
+		t.Errorf("project name = %#v, want my-service", manifest.Name)
 	}
+	assertInitApplications(t, manifest, map[string]string{"user-api": "user_API"})
 }
 
 func TestInitNonexistentDir(t *testing.T) {
@@ -388,16 +519,8 @@ func TestInitNameFollowsDirArgNotCwd(t *testing.T) {
 		t.Fatalf("exit = %d, want %d\n%s", code, ExitOK, out)
 	}
 
-	b, err := os.ReadFile(filepath.Join(target, "chmura.yaml"))
-	if err != nil {
-		t.Fatalf("chmura.yaml not written into the target dir: %v", err)
-	}
-	content := string(b)
-	if !strings.Contains(content, "name: api") {
-		t.Errorf("name should follow the dir arg (api), not cwd (outer)\n%s", content)
-	}
-	if strings.Contains(content, "name: outer") {
-		t.Errorf("name must not come from cwd\n%s", content)
+	if got := parseInitManifest(t, target).Name; got != "api" {
+		t.Errorf("name should follow the dir arg: got %#v, want api", got)
 	}
 	if _, err := os.Stat(filepath.Join(cwd, "chmura.yaml")); !os.IsNotExist(err) {
 		t.Error("chmura.yaml must not be written into cwd when a dir arg is given")
