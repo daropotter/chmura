@@ -20,8 +20,13 @@ fields, and checks scalar types without coercion. It preserves explicit names
 and paths rather than deriving or normalizing them. Source forms cannot be
 combined, and a Dockerfile source requires both paths.
 
+Applications may declare named `ports`. Numbers must be integers from 1 to
+65535, and protocols are `http`, `https`, `tcp` or `udp`. Visibility is
+`application`, `project`, `space` or `public`; omitting it resolves to `project`
+in the returned model. Multiple ports are allowed and names are preserved.
+
 This is a subset of the [product schema](../reference/manifest.md). Other fields
-(including resources, ports, health, environment, volumes and endpoints) are
+(including resources, health, environment, volumes and endpoints) are
 rejected until their models and validation land in later increments. They are
 never silently ignored. Deployment targets and engine-specific fields have no
 place in the portable manifest.

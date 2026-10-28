@@ -1,5 +1,5 @@
 // Package manifest parses and validates portable project definitions.
-// The initial schema covers project identity, applications and their sources.
+// The schema covers project identity, application sources and named ports.
 package manifest
 
 import (
@@ -22,7 +22,8 @@ type Project struct {
 
 // Application describes an application in a project.
 type Application struct {
-	Source Source `yaml:"source"`
+	Source Source          `yaml:"source"`
+	Ports  map[string]Port `yaml:"ports,omitempty"`
 }
 
 // Source selects a prebuilt image or a Dockerfile within a build context.
@@ -74,13 +75,13 @@ func (p Project) validate() error {
 			if source.Context != "" || source.Dockerfile != "" {
 				return fmt.Errorf("%s: image and Dockerfile build fields are mutually exclusive", path)
 			}
-			continue
-		}
-		if source.Context == "" {
+		} else if source.Context == "" {
 			return fmt.Errorf("%s: an image or a build context is required", path)
-		}
-		if source.Dockerfile == "" {
+		} else if source.Dockerfile == "" {
 			return fmt.Errorf("%s.dockerfile: Dockerfile path is required with context", path)
+		}
+		if err := p.Applications[name].normalizePorts("applications." + name); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -95,7 +96,7 @@ func decodeString(target *string, data []byte) error {
 	}
 	text, ok := value.(string)
 	if !ok || strings.TrimSpace(text) == "" {
-		return errors.New("manifest names and source fields must be non-empty strings")
+		return errors.New("manifest string fields and names must be non-empty strings")
 	}
 	*target = text
 	return nil
@@ -110,6 +111,6 @@ func decodeInteger(target *int, data []byte) error {
 	case int64, uint64:
 		return yaml.Unmarshal(data, target)
 	default:
-		return errors.New("version: expected an integer")
+		return errors.New("expected an integer")
 	}
 }
