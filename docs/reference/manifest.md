@@ -203,7 +203,7 @@ health:
 
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `check` | object | — | The readiness probe: one of `http` · `tcp` · `exec`. Omitting `health` entirely means `process-only` readiness. |
+| `check` | object | — | The readiness probe: one of `http` · `tcp` · `process` · `exec`. Omitting `health` entirely means `process-only` readiness. |
 | `check.interval` | duration | — | Time between probes. |
 | `check.timeout` | duration | — | When a single probe counts as failed. |
 | `ready.successes` | integer | `1` | Consecutive successes that grant readiness. |
