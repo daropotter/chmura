@@ -2,14 +2,17 @@
 package main
 
 import (
+	"context"
 	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/daropotter/chmura/internal/version"
+	"github.com/daropotter/chmura/internal/servercmd"
 )
 
 func main() {
-	if handled, code := version.Run(os.Args[1:], os.Stdout); handled {
-		os.Exit(code)
-	}
-	// No other commands yet.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	code := servercmd.Execute(ctx, os.Args[1:], os.Stdout, os.Stderr)
+	stop()
+	os.Exit(code)
 }
