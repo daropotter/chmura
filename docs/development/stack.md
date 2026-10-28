@@ -31,7 +31,7 @@ for the settled choices is in the [engineering decisions](decisions.md).
 | DB layer | `sqlc` | typed queries; must serve both engines |
 | Agent ↔ control plane | gRPC (bidi stream) + mTLS | outbound; the agent has its own identity |
 | k3s engine | `k8s.io/client-go`, `sigs.k8s.io/controller-runtime` | reconcile; k8s objects never leak into the model |
-| YAML manifests | `goccy/go-yaml` | `chmura.yaml`, `cluster.yaml`, `installation.yaml`; schema validation |
+| YAML manifests | `goccy/go-yaml` (used by `init`) | Safe string encoding in generated manifests; parsing and schema validation arrive with their subsystems |
 | Credential store | `zalando/go-keyring` | token in the OS store, only a reference in config |
 | PKI / mTLS | stdlib `crypto/x509`, `crypto/tls` | reach for step-ca/cfssl only if hand-rolling gets heavy |
 | Interactivity (optional) | `charmbracelet/gum` (subprocess) | never business logic |
