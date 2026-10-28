@@ -186,7 +186,7 @@ Two guarantees make operations safe over an unreliable network:
 
 ## Version and capability handshake
 
-On connecting, the CLI asks the installation what it is:
+On connecting, the CLI asks the installation what it is with `GET /v1/info`:
 
 ```json
 {
@@ -200,6 +200,12 @@ On connecting, the CLI asks the installation what it is:
 If a manifest needs a feature the server does not offer, the CLI or API says so
 plainly rather than failing halfway. The `profile` (`production` or `dev`) is what
 lets the CLI label a [dev installation](local-dev.md) everywhere a target is shown.
+
+The discovery endpoint is read-only and exposes no credentials or workload data.
+`features` lists only implemented features; it is currently an empty array. The
+response above illustrates the future contract rather than claiming those
+deployment features already exist. Unknown paths return `404`; unsupported
+methods return `405`.
 
 ## Authentication
 
