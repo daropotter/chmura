@@ -84,6 +84,22 @@ cannot create a pool with a command.
 
 ## Bootstrap
 
+### Run the discovery server
+
+The implemented server currently exposes installation discovery over HTTPS:
+
+```bash
+chmura-server serve --tls-cert server.pem --tls-key server-key.pem
+```
+
+It listens on `127.0.0.1:7443` by default; use `--listen` to choose another
+address, and `--profile dev` for a dev installation. TLS 1.3 and a certificate/key
+pair are required. Clients must trust the certificate's issuer. Interrupting the
+server drains requests before exiting. State bootstrap and deployment operations
+follow in later increments.
+
+### Installation bootstrap
+
 The control plane **does not live in the cluster it manages.** That cuts the
 chicken-and-egg problem: bringing up the control plane needs no working cluster.
 
