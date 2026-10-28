@@ -41,9 +41,12 @@ if [ -n "$VERSION" ]; then
 else
   # Newest release from the list — not /releases/latest, which skips pre-releases.
   VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases" \
-    | grep '"tag_name":' | head -1 | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')
+    | grep -o '"tag_name":[[:space:]]*"[^"]*"' | head -1 | sed -E 's/.*"tag_name":[[:space:]]*"([^"]+)".*/\1/')
   [ -n "$VERSION" ] || die "could not determine the latest release"
 fi
+
+# Use the platform's install utility, with a precise error when unavailable.
+command -v install >/dev/null 2>&1 || die "install tool not found — install it before running this installer"
 
 num="${VERSION#v}" # asset names carry the version without the leading v
 archive="chmura_${num}_${os}_${arch}.tar.gz"
