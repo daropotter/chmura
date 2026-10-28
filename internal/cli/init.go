@@ -117,6 +117,9 @@ func runInit(out io.Writer, dir string, depth Depth) error {
 	}
 	_, writeErr := io.WriteString(file, content)
 	closeErr := file.Close()
+	if writeErr != nil || closeErr != nil {
+		_ = os.Remove(manifest)
+	}
 	if writeErr != nil {
 		return writeErr
 	}
