@@ -12,7 +12,9 @@ one or more named `applications`. Each application selects exactly one source:
 
 Both source forms are parsed, including the form emitted by `chmura init`.
 Parsing does not check local paths, validate registry image-reference syntax,
-contact a registry or build an image. Dockerfile execution remains a later
+contact a registry or build an image. The [instance planner](instance-planning.md)
+validates image-reference syntax when selecting a prebuilt application and
+resolves its effective execution settings. Dockerfile execution remains a later
 milestone.
 
 The parser requires a single YAML document, rejects duplicate keys and unknown
@@ -53,10 +55,10 @@ resolved copy. The parser and resolver share readiness-threshold defaults.
 
 The [execution contract](../deployment.md#probe-defaults-and-execution) also
 defines redirect handling, startup timing, attempt cancellation and consecutive
-failure counting. The current implementation resolves parameters only; executing
-them is a separate concern. The [network probe runner](probe-execution.md) can
-perform individual HTTP/TCP attempts. Scheduling, restart decisions and agent
-integration remain later increments.
+failure counting. Manifest resolution is separate from the [probe execution
+components](probe-execution.md), which implement attempts, scheduling, readiness
+and healthy decisions. Runtime actions and agent integration remain later
+increments.
 
 This is a subset of the [product schema](../reference/manifest.md). Other fields
 (including resources, environment, volumes and endpoints) are
