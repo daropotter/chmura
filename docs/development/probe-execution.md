@@ -24,8 +24,22 @@ Parent cancellation and an earlier parent deadline take precedence. Timeout or
 cancellation closes outstanding network work; errors retain their context cause
 for `errors.Is`. An unexpected HTTP response returns `StatusError` with its code.
 
-Only one attempt is performed per invocation. Per-check scheduling and overlap
-prevention, consecutive-outcome thresholds, startup readiness, process/exec
-probes, restart actions and agent/engine integration remain separate increments.
-The cluster agent will use this component; the CLI continues to talk only to the
+`probe.Schedule` serially invokes an attempt function for one check. It starts
+immediately and waits at least one interval from each completion before the next
+attempt. Results retain their completion time even if delivery is delayed. The
+caller supplies a result channel, which is never closed by the scheduler; a slow
+consumer applies backpressure without an internal queue or catch-up bursts.
+
+Attempt errors are published as outcomes, and monitoring continues. Parent
+cancellation stops publication and further attempts, signals the active attempt
+and waits for its cleanup. An attempt interrupted by parent cancellation is not
+published as a failed check. Cancellation also interrupts interval waiting and
+blocked result delivery. Attempt functions must honor context cancellation and
+enforce their own timeout, as `Network.Run` does.
+
+The owner runs one scheduler per check and supplies the interval from the shared
+effective manifest parameters. Different checks may have independent schedulers.
+Consecutive-outcome thresholds, startup readiness, process/exec probes, restart
+actions and agent/engine integration remain separate increments. The cluster
+agent will use these components; the CLI continues to talk only to the
 control-plane API.
