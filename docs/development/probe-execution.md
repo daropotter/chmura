@@ -73,7 +73,29 @@ instance facts; outbound reporting must be decoupled so a control-plane outage
 cannot block readiness processing or its startup deadline. The monitor only
 uses `health.check` and `ready`, leaving restart rules independent.
 
+## Healthy monitoring
+
+`probe.MonitorHealthy` evaluates an explicit `healthy.check` independently of
+readiness. The owner closes its `firstReady` channel once the full readiness
+threshold has been acquired, for example from the readiness observer when
+`EverReady` first becomes true. No healthy attempt runs before that signal. Once
+activated, the check continues even if readiness is later lost.
+
+Each attempt receives its own resolved probe and timeout. Consecutive failures
+reach `healthy.unhealthy-failures`; any success resets the streak. Reaching the
+threshold terminates the monitor with `ErrUnhealthy`, a decision for the owner
+to restart the instance. The monitor performs no restart itself. Parent stop
+waits for active cleanup and returns the context cause instead of an unhealthy
+decision. Attempts run serially with the same completion-based cadence as the
+readiness scheduler.
+
+An absent healthy rule or an omitted `healthy.check` schedules no additional
+probe and returns nil. The readiness probe is never inherited. Runtime exit
+supervision remains the owner's responsibility, including for process-only
+rules and applications with no healthy rule. A restart needs a fresh monitor
+and readiness signal for its new process generation.
+
 Process-only readiness without an explicit probe, process/exec execution,
-restart decisions/actions and agent/engine integration remain separate
-increments. The cluster agent will use these components; the CLI continues to
-talk only to the control-plane API.
+restart actions and agent/engine integration remain separate increments. The
+cluster agent will use these components; the CLI continues to talk only to the
+control-plane API.
