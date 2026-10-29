@@ -39,7 +39,36 @@ enforce their own timeout, as `Network.Run` does.
 
 The owner runs one scheduler per check and supplies the interval from the shared
 effective manifest parameters. Different checks may have independent schedulers.
-Consecutive-outcome thresholds, startup readiness, process/exec probes, restart
-actions and agent/engine integration remain separate increments. The cluster
-agent will use these components; the CLI continues to talk only to the
-control-plane API.
+
+## Readiness monitoring
+
+`probe.MonitorReadiness` combines the scheduler with the effective readiness
+rules for a validated explicit probe. It starts with `Ready: false`, grants
+readiness after the configured consecutive successes, and revokes it after the
+configured consecutive failures. An opposite result resets the current streak.
+Only the initial snapshot and changes are published; `EverReady` stays true
+after the first acquisition, including when readiness is later lost.
+
+The runtime adapter supplies the actual process start time. The startup budget
+is measured from that fact, so starting the monitor later does not renew it.
+The full success threshold must be reached before the startup deadline;
+completion at or after it does not grant first readiness. The deadline is
+disabled permanently after the first acquisition. A startup failure is terminal
+for this monitor: it publishes `StartupFailed`, cancels the active attempt,
+waits for cleanup and returns `ErrStartupTimeout`.
+
+The supplied attempt receives the resolved probe and a context bounded by the
+per-attempt timeout. A callback that returns nil after its context expired still
+produces a failed attempt. Parent cancellation or an earlier parent deadline
+stops monitoring without declaring startup failure. The active attempt must
+honor cancellation; monitoring waits for it to return before exiting.
+
+State observers run serially and must return promptly. Use them to update local
+instance facts; outbound reporting must be decoupled so a control-plane outage
+cannot block readiness processing or its startup deadline. The monitor only
+uses `health.check` and `ready`, leaving restart rules independent.
+
+Process-only readiness without an explicit probe, process/exec execution,
+restart decisions/actions and agent/engine integration remain separate
+increments. The cluster agent will use these components; the CLI continues to
+talk only to the control-plane API.
