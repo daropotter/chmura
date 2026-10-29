@@ -188,7 +188,7 @@ func TestPlanImageInstancePreservesValidImageReferences(t *testing.T) {
 }
 
 func TestPlanImageInstanceRejectsMalformedImageReferences(t *testing.T) {
-	for _, image := range []string{"https://registry.example.com/api:v1", "image with spaces", "registry.example.com/UPPERCASE/repository", "app@sha256:bad", "app@sha256:" + strings.Repeat("a", 63), "app:" + strings.Repeat("a", 129)} {
+	for _, image := range []string{strings.Repeat("a", 64), "https://registry.example.com/api:v1", "image with spaces", "registry.example.com/UPPERCASE/repository", "app@sha256:bad", "app@sha256:" + strings.Repeat("a", 63), "app:" + strings.Repeat("a", 129)} {
 		t.Run(image, func(t *testing.T) {
 			plan, err := deployment.PlanInstance(imageProject(t, image), "app")
 			if plan != nil || err == nil || !strings.Contains(err.Error(), "source.image") {
