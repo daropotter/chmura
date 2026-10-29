@@ -71,12 +71,7 @@ func (a Application) normalizeHealth(path string) error {
 			return err
 		}
 	}
-	if h.Ready.Successes == 0 {
-		h.Ready.Successes = 1
-	}
-	if h.Ready.UnreadyFailures == 0 {
-		h.Ready.UnreadyFailures = 3
-	}
+	h.Ready = h.Ready.withDefaults()
 	if h.Healthy != nil {
 		if h.Healthy.UnhealthyFailures == 0 {
 			return fmt.Errorf("%s.healthy.unhealthy-failures: a positive failure threshold is required", path)

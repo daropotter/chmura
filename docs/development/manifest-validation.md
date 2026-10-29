@@ -40,9 +40,21 @@ executable; later arguments may be empty strings.
 
 Explicit probe intervals, timeouts and startup timeouts must be positive Go
 duration strings (for example `5s` or `2m`). Omitted timings remain unspecified
-(zero in the Go model); the product specification has not set their defaults.
-An omitted HTTP `expect-status` also remains unspecified. This increment
-validates declarations only; it does not execute probes or restart processes.
+(zero in the parsed declaration), and omitted HTTP `expect-status` remains nil.
+
+`Health.Effective()` resolves a validated declaration into an independent copy
+for planning or execution: probe interval `5s`, timeout `2s`, startup timeout
+`2m`, and HTTP expected statuses `[200]`. Explicit values take precedence. It
+preserves a nil health configuration, absent probes and absent restart rules;
+process-only restart monitoring never inherits the readiness probe. Nested
+check objects, command arguments and expected-status lists are copied so callers
+can modify effective parameters without changing the declaration or another
+resolved copy. The parser and resolver share readiness-threshold defaults.
+
+The [execution contract](../deployment.md#probe-defaults-and-execution) also
+defines redirect handling, startup timing, attempt cancellation and consecutive
+failure counting. The current implementation resolves parameters only; executing
+probes and restarting processes remain later increments.
 
 This is a subset of the [product schema](../reference/manifest.md). Other fields
 (including resources, environment, volumes and endpoints) are

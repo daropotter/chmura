@@ -132,6 +132,27 @@ restarted in the same slot (the classic "stay alive"). The `process` check and
 the `healthy` rule sit *above* that, catching a process that is running but
 wedged.
 
+### Probe defaults and execution
+
+Each explicit probe defaults to a `5s` interval and a `2s` timeout. These defaults
+apply independently to readiness and to an explicit `healthy.check`; neither
+check inherits the other's settings. At most one attempt runs at a time for a
+given check. Timeout cancels the entire attempt, including an exec command, and
+counts as one failure. Success resets the consecutive-failure counter.
+
+HTTP probes accept exactly status `200` by default. An application that uses a
+different success status declares it, for example `expect-status: [204]`.
+Redirects are not followed automatically: a redirect to a login page must not
+turn into a successful probe merely because that page returns `200`.
+
+`startup-timeout` defaults to `2m`, measured from process start. Pulling an image
+does not consume this budget. The deadline bounds the first acquisition of
+readiness; the later loss of readiness uses the readiness rules instead of
+starting the startup clock again.
+
+Declarations may omit these fields. Shared default resolution produces the
+effective parameters before planning, and `deploy --dry-run` shows them.
+
 ### `ready`
 
 ```text

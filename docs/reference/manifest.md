@@ -204,14 +204,23 @@ health:
 | Key | Type | Default | Purpose |
 | --- | --- | --- | --- |
 | `check` | object | — | The readiness probe: one of `http` · `tcp` · `process` · `exec`. Omitting `health` entirely means `process-only` readiness. |
-| `check.interval` | duration | — | Time between probes. |
-| `check.timeout` | duration | — | When a single probe counts as failed. |
+| `check.interval` | duration | `5s` | Time between probes. |
+| `check.timeout` | duration | `2s` | Deadline for the entire probe attempt; expiry cancels it and counts as a failure. |
+| `check.http.expect-status` | list of integers | `[200]` | HTTP statuses accepted as success. Redirects are not followed automatically. |
 | `ready.successes` | integer | `1` | Consecutive successes that grant readiness. |
 | `ready.unready-failures` | integer | `3` | Consecutive failures that revoke it (out of traffic). |
 | `healthy` | object | *(absent)* | Opt-in health rule. Absent means only a process crash restarts. Watches the process only unless given its own `check`; **never** the readiness check. |
 | `healthy.unhealthy-failures` | integer | — | Consecutive failures that kill and restart the instance. |
 | `healthy.check` | object | *(process)* | Optional own probe — keep it local to the process, never a downstream. |
-| `startup-timeout` | duration | — | Max time to first readiness before the instance is failed. |
+| `startup-timeout` | duration | `2m` | Max time from process start to first readiness before the instance is failed; image pulling is excluded. |
+
+The same interval, timeout and HTTP-status defaults apply to an explicit
+`healthy.check`, independently of the readiness probe. Omitted `healthy` remains
+disabled, and an omitted `healthy.check` remains process-only.
+
+Defaults are resolved before planning and shown by `deploy --dry-run`; the
+declaration may leave these fields omitted. At most one attempt is active for a
+given check. A successful attempt resets its consecutive-failure counter.
 
 Check forms:
 

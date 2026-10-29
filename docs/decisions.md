@@ -156,6 +156,15 @@ documented — not a historical log — so terminology matches the rest of these
 8. `ready` thresholds are `successes` and `unready-failures`; `healthy` is
     `unhealthy-failures`.
 9. The list of events that end the stabilization window is closed.
+10. Explicit probes default to interval `5s`, timeout `2s`, and HTTP
+    `expect-status: [200]`. HTTP probes do not follow redirects automatically.
+11. `startup-timeout` defaults to `2m` from process start, excluding image
+    pulling; it bounds the first acquisition of readiness.
+12. At most one attempt is active per check. Timeout cancels the entire attempt
+    and counts as a failure; success resets the consecutive-failure counter.
+13. Shared default resolution preserves omissions in the declaration and
+    produces effective values before planning. `deploy --dry-run` shows those
+    values. Resolving defaults never enables a probe or restart rule.
 
 ## Rollout and revisions
 
