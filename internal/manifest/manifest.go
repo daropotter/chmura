@@ -1,5 +1,5 @@
 // Package manifest parses and validates portable project definitions.
-// The schema covers project identity, application sources and named ports.
+// The schema covers project identity, application sources, ports and health.
 package manifest
 
 import (
@@ -24,6 +24,7 @@ type Project struct {
 type Application struct {
 	Source Source          `yaml:"source"`
 	Ports  map[string]Port `yaml:"ports,omitempty"`
+	Health *Health         `yaml:"health,omitempty"`
 }
 
 // Source selects a prebuilt image or a Dockerfile within a build context.
@@ -81,6 +82,9 @@ func (p Project) validate() error {
 			return fmt.Errorf("%s.dockerfile: Dockerfile path is required with context", path)
 		}
 		if err := p.Applications[name].normalizePorts("applications." + name); err != nil {
+			return err
+		}
+		if err := p.Applications[name].normalizeHealth("applications." + name); err != nil {
 			return err
 		}
 	}
