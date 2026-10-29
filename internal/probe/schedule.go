@@ -26,22 +26,37 @@ func Schedule(ctx context.Context, interval time.Duration, attempt func(context.
 	if attempt == nil || results == nil {
 		return errors.New("probe attempt and result channel are required")
 	}
+	return schedule(ctx, interval, attempt, func(err error) (time.Time, error) {
+		result := Result{FinishedAt: time.Now(), Err: err}
+		if err := contextError(ctx); err != nil {
+			return result.FinishedAt, err
+		}
+		select {
+		case results <- result:
+			return result.FinishedAt, nil
+		case <-ctx.Done():
+			return result.FinishedAt, ctx.Err()
+		}
+	})
+}
+
+// complete records completion and waits for consumption. Its timestamp anchors
+// the interval even if the consumer applies backpressure for longer than that.
+func schedule(ctx context.Context, interval time.Duration, attempt func(context.Context) error,
+	complete func(error) (time.Time, error)) error {
 	for {
-		if err := ctx.Err(); err != nil {
+		if err := contextError(ctx); err != nil {
 			return err
 		}
 		err := attempt(ctx)
-		result := Result{FinishedAt: time.Now(), Err: err}
-		if err := ctx.Err(); err != nil {
+		if err := contextError(ctx); err != nil {
 			return err
 		}
-		timer := time.NewTimer(interval)
-		select {
-		case results <- result:
-		case <-ctx.Done():
-			timer.Stop()
-			return ctx.Err()
+		finishedAt, err := complete(err)
+		if err != nil {
+			return err
 		}
+		timer := time.NewTimer(time.Until(finishedAt.Add(interval)))
 		select {
 		case <-timer.C:
 		case <-ctx.Done():

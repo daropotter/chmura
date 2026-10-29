@@ -47,7 +47,7 @@ func (e *StatusError) Error() string {
 // status settings through the shared manifest defaults. Scheduling, thresholds
 // and restart decisions belong to the caller.
 func (n Network) Run(ctx context.Context, target Target, check manifest.Probe) error {
-	if err := ctx.Err(); err != nil {
+	if err := contextError(ctx); err != nil {
 		return err
 	}
 	if check.Process != nil || check.Exec != nil || (check.HTTP == nil) == (check.TCP == nil) {
@@ -85,7 +85,7 @@ func (n Network) Run(ctx context.Context, target Target, check manifest.Probe) e
 			return attemptError(ctx, "TCP probe", err)
 		}
 		_ = conn.Close()
-		return ctx.Err()
+		return contextError(ctx)
 	}
 	u, err := url.ParseRequestURI(effective.HTTP.Path)
 	if err != nil || u.IsAbs() || u.Host != "" || !strings.HasPrefix(u.Path, "/") {
@@ -117,7 +117,7 @@ func (n Network) Run(ctx context.Context, target Target, check manifest.Probe) e
 		return attemptError(ctx, "HTTP probe", err)
 	}
 	defer response.Body.Close()
-	if err := ctx.Err(); err != nil {
+	if err := contextError(ctx); err != nil {
 		return err
 	}
 	if !slices.Contains(effective.HTTP.ExpectStatus, response.StatusCode) {
@@ -127,8 +127,8 @@ func (n Network) Run(ctx context.Context, target Target, check manifest.Probe) e
 }
 
 func attemptError(ctx context.Context, operation string, err error) error {
-	if ctx.Err() != nil {
-		err = ctx.Err()
+	if cause := contextError(ctx); cause != nil {
+		err = cause
 	}
 	return fmt.Errorf("%s: %w", operation, err)
 }

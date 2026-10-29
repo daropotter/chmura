@@ -154,6 +154,10 @@ does not consume this budget. The deadline bounds the first acquisition of
 readiness; the later loss of readiness uses the readiness rules instead of
 starting the startup clock again.
 
+The configured success threshold must be met before the startup deadline;
+partial success does not disable it. A result completed at or after the deadline
+does not grant first readiness.
+
 Declarations may omit these fields. Shared default resolution produces the
 effective parameters before planning, and `deploy --dry-run` shows them.
 
