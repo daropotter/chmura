@@ -36,3 +36,6 @@ confirm remote space/project existence or allocate resources. Placement,
 capability checks, image resolution, runtime creation/idempotency, process-only
 readiness execution and agent integration follow in later increments. There is
 no `deploy` command, deployment endpoint or cluster mutation in this increment.
+
+The [k3s instance adapter](instance-creation.md) accepts this plan together with
+explicit image-resolution, target and allocation facts to prepare its Pod.
