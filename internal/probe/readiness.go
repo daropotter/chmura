@@ -28,6 +28,13 @@ type Readiness struct {
 // Restart rules and process-only readiness are separate concerns.
 func MonitorReadiness(ctx context.Context, processStartedAt time.Time, health *manifest.Health,
 	attempt func(context.Context, manifest.Probe) error, onChange func(Readiness)) error {
+	notifications := make(chan struct{})
+	return monitorReadiness(ctx, processStartedAt, health, attempt, onChange,
+		&completion{notify: notifications, ready: notifications})
+}
+
+func monitorReadiness(ctx context.Context, processStartedAt time.Time, health *manifest.Health,
+	attempt func(context.Context, manifest.Probe) error, onChange func(Readiness), results *completion) error {
 	if err := contextError(ctx); err != nil {
 		return err
 	}
@@ -53,9 +60,9 @@ func MonitorReadiness(ctx context.Context, processStartedAt time.Time, health *m
 	}
 	onChange(state)
 	workerCtx, cancel := context.WithCancel(ctx)
-	results, done := make(chan Result), make(chan error, 1)
+	done := make(chan error, 1)
 	go func() {
-		done <- Schedule(workerCtx, time.Duration(config.Check.Interval), func(ctx context.Context) error {
+		done <- schedule(workerCtx, time.Duration(config.Check.Interval), func(ctx context.Context) error {
 			ctx, stop := context.WithTimeout(ctx, time.Duration(config.Check.Timeout))
 			defer stop()
 			err := attempt(ctx, *config.Check)
@@ -63,7 +70,7 @@ func MonitorReadiness(ctx context.Context, processStartedAt time.Time, health *m
 				return cause
 			}
 			return err
-		}, results)
+		}, func(err error) (time.Time, error) { return results.publish(workerCtx, err) })
 	}()
 	defer func() { cancel(); <-done }()
 	timer := time.NewTimer(time.Until(deadline))
@@ -106,19 +113,19 @@ func MonitorReadiness(ctx context.Context, processStartedAt time.Time, health *m
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case result := <-results:
-			if err := apply(result); err != nil {
-				return err
-			}
-		case <-startup:
-			// Prefer an already completed, timely result when both channels are
-			// ready; select ordering must not decide whether startup succeeded.
-			select {
-			case result := <-results:
+		case <-results.ready:
+			if result, ok := results.take(); ok {
 				if err := apply(result); err != nil {
 					return err
 				}
-			default:
+			}
+		case <-startup:
+			// Inspect the recorded outcome under the same lock as its timestamp.
+			// Notification delivery may lag completion across the deadline.
+			if result, ok := results.take(); ok {
+				if err := apply(result); err != nil {
+					return err
+				}
 			}
 			if !state.EverReady {
 				return failStartup()

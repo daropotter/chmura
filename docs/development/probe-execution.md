@@ -57,6 +57,11 @@ disabled permanently after the first acquisition. A startup failure is terminal
 for this monitor: it publishes `StartupFailed`, cancels the active attempt,
 waits for cleanup and returns `ErrStartupTimeout`.
 
+Completion time and the pending outcome are recorded together under the same
+lock used by the startup deadline. A timely completion is considered even if
+its notification is delayed. The scheduler waits for consumption before
+recording the next result; a delayed notification cannot apply a result twice.
+
 The supplied attempt receives the resolved probe and a context bounded by the
 per-attempt timeout. A callback that returns nil after its context expired still
 produces a failed attempt. Parent cancellation or an earlier parent deadline
