@@ -32,7 +32,29 @@ native startup/readiness/liveness probes for Chmura rules. The initial executor
 supports explicit HTTP/TCP readiness and optional HTTP/TCP or process-only
 healthy monitoring. Unsupported checks fail before resource creation.
 
-This increment prepares the payload only. API writes, conflict/replay handling,
-readiness-gate updates, restart actions and agent/control-plane wiring follow
-separately. Image resolution and the admitted allocation are prerequisites,
-rather than new defaults in the project manifest.
+`Creator.Ensure` prepares the payload and submits a Pod create request through
+an explicitly configured client. On AlreadyExists it reads the stored Pod and
+checks full key/intent hashes, ownership markers and execution shape. Equivalent
+resource quantity representations and admitted namespace/defaulting context
+(default service account, pull secrets, tolerations and empty/default security,
+priority and user-namespace fields) do not cause a false conflict. The container
+spec and other execution fields must still match. A conflict returns
+`ErrInstanceConflict` without patches, deletions or adoption.
+
+The result contains the Pod UID/name and application container name. It means
+the resource was accepted or its existing identity verified, rather than that
+an image was pulled or readiness acquired. A supervisor must discover the
+container ID before resolving/observing the running generation. A repeated
+request reuses an existing terminated Pod too; a new generation needs a new key.
+
+Cancellation or a lost response can leave an accepted Pod. Repeating the same
+request/key finds that identity without an additional current Pod, including
+under concurrent writers. API errors retain their cause; missing namespaces are
+not created. No local cache or mutex is needed for correctness.
+
+This is idempotence of the current desired resource, not a permanent operation
+receipt. If a Pod has been deleted, Ensure can recreate it. Before exposing this
+through the public API, durable control-plane operations must retain results and
+retire old requests so replay cannot resurrect obsolete work. Image resolution,
+admission, readiness-gate updates, restart actions and agent/control-plane wiring
+remain separate responsibilities. No live cluster was changed by the tests.
