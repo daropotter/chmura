@@ -40,6 +40,25 @@ attempt timeout, including the `2s` default. Parent stop or an earlier deadline
 takes precedence over the returned outcome, even if an adapter returns success
 at its deadline. The call waits for adapter cleanup before returning.
 
+`internal/engine/k3s.Resolver.Resolve` obtains the network target and process
+start time for an explicitly selected container generation. An engine reference
+contains namespace, pod name/UID, container name and container ID; these remain
+private adapter facts. The resolver uses an explicitly configured `client-go`
+client and does not load local kubeconfig or create cluster resources.
+
+Resolution requires a running, non-terminating pod and the selected running
+application container. Pod or container identity changes return
+`ErrStaleInstance`; missing runtime facts return `ErrInstanceUnavailable`.
+Kubernetes readiness flags are deliberately ignored so Chmura can evaluate its
+own readiness rules. The result uses the primary pod IP, an independent copy of
+the application's declared ports, and the container's actual start time rather
+than pod creation/image-pull time. API errors retain their cause, and the caller
+owns the lookup deadline.
+
+This is a point-in-time observation. Resolution does not pin an IP to a process
+generation; lifecycle supervision must cancel checks when that generation exits
+or is replaced. Concrete process/exec operations and agent wiring follow later.
+
 `probe.Schedule` serially invokes an attempt function for one check. It starts
 immediately and waits at least one interval from each completion before the next
 attempt. Results retain their completion time even if delivery is delayed. The
@@ -111,7 +130,7 @@ supervision remains the owner's responsibility, including for process-only
 rules and applications with no healthy rule. A restart needs a fresh monitor
 and readiness signal for its new process generation.
 
-Process-only readiness without an explicit probe, concrete runtime adapters,
+Process-only readiness without an explicit probe, further runtime operations,
 restart actions and agent/engine integration remain separate increments. The
 cluster agent will use these components; the CLI continues to talk only to the
 control-plane API.

@@ -30,7 +30,7 @@ for the settled choices is in the [engineering decisions](decisions.md).
 | State DB (HA mode) | PostgreSQL (external, replicated) | "HA mode", any load balancer |
 | DB layer | `sqlc` | typed queries; must serve both engines |
 | Agent ↔ control plane | gRPC (bidi stream) + mTLS | outbound; the agent has its own identity |
-| k3s engine | `k8s.io/client-go`, `sigs.k8s.io/controller-runtime` | reconcile; k8s objects never leak into the model |
+| k3s engine | `k8s.io/client-go` | Instance target resolution in `internal/engine/k3s`; k8s objects remain private. `controller-runtime` remains a candidate for reconciliation. |
 | YAML manifests | `goccy/go-yaml` | Safe string encoding in `init`; shared parsing and validation in `internal/manifest` |
 | Credential store | `zalando/go-keyring` | token in the OS store, only a reference in config |
 | PKI / mTLS | stdlib `crypto/x509`, `crypto/tls` | reach for step-ca/cfssl only if hand-rolling gets heavy |
