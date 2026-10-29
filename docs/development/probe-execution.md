@@ -24,6 +24,22 @@ Parent cancellation and an earlier parent deadline take precedence. Timeout or
 cancellation closes outstanding network work; errors retain their context cause
 for `errors.Is`. An unexpected HTTP response returns `StatusError` with its code.
 
+`probe.Runtime.Run` performs a process or exec attempt through callbacks bound
+to one runtime instance. The adapter supplies `ProcessRunning` for a named
+process/executable and `Exec` for a literal executable/argument vector. It must
+execute that vector directly without adding a shell, honor cancellation of the
+entire operation, and finish runtime I/O and process cleanup before returning.
+Only the callback for the selected probe type is required; a missing adapter is
+an error. The runner has no default host implementation.
+
+A running named process succeeds; an absent one returns `ErrProcessNotRunning`.
+An exec exit status of zero succeeds, while any nonzero status returns
+`ExitError` with its code. Adapter execution errors retain their cause for
+`errors.Is`. The runner copies the declared arguments and resolves the shared
+attempt timeout, including the `2s` default. Parent stop or an earlier deadline
+takes precedence over the returned outcome, even if an adapter returns success
+at its deadline. The call waits for adapter cleanup before returning.
+
 `probe.Schedule` serially invokes an attempt function for one check. It starts
 immediately and waits at least one interval from each completion before the next
 attempt. Results retain their completion time even if delivery is delayed. The
@@ -95,7 +111,7 @@ supervision remains the owner's responsibility, including for process-only
 rules and applications with no healthy rule. A restart needs a fresh monitor
 and readiness signal for its new process generation.
 
-Process-only readiness without an explicit probe, process/exec execution,
+Process-only readiness without an explicit probe, concrete runtime adapters,
 restart actions and agent/engine integration remain separate increments. The
 cluster agent will use these components; the CLI continues to talk only to the
 control-plane API.
