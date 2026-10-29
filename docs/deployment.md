@@ -137,7 +137,11 @@ wedged.
 Each explicit probe defaults to a `5s` interval and a `2s` timeout. These defaults
 apply independently to readiness and to an explicit `healthy.check`; neither
 check inherits the other's settings. At most one attempt runs at a time for a
-given check. Timeout cancels the entire attempt, including an exec command, and
+given check. The first attempt starts immediately; subsequent attempts wait at
+least one interval after the preceding attempt completes. Slow attempts and slow
+result consumers never cause a burst of catch-up attempts.
+
+Timeout cancels the entire attempt, including an exec command, and
 counts as one failure. Success resets the consecutive-failure counter.
 
 HTTP probes accept exactly status `200` by default. An application that uses a
