@@ -54,7 +54,9 @@ resolved copy. The parser and resolver share readiness-threshold defaults.
 The [execution contract](../deployment.md#probe-defaults-and-execution) also
 defines redirect handling, startup timing, attempt cancellation and consecutive
 failure counting. The current implementation resolves parameters only; executing
-probes and restarting processes remain later increments.
+them is a separate concern. The [network probe runner](probe-execution.md) can
+perform individual HTTP/TCP attempts. Scheduling, restart decisions and agent
+integration remain later increments.
 
 This is a subset of the [product schema](../reference/manifest.md). Other fields
 (including resources, environment, volumes and endpoints) are
