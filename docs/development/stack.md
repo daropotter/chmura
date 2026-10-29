@@ -32,6 +32,7 @@ for the settled choices is in the [engineering decisions](decisions.md).
 | Agent ↔ control plane | gRPC (bidi stream) + mTLS | outbound; the agent has its own identity |
 | k3s engine | `k8s.io/client-go` | Instance target resolution in `internal/engine/k3s`; k8s objects remain private. `controller-runtime` remains a candidate for reconciliation. |
 | YAML manifests | `goccy/go-yaml` | Safe string encoding in `init`; shared parsing and validation in `internal/manifest` |
+| Image references | `distribution/reference` | Syntax validation in the portable instance planner; registry resolution follows later |
 | Credential store | `zalando/go-keyring` | token in the OS store, only a reference in config |
 | PKI / mTLS | stdlib `crypto/x509`, `crypto/tls` | reach for step-ca/cfssl only if hand-rolling gets heavy |
 | Interactivity (optional) | `charmbracelet/gum` (subprocess) | never business logic |
