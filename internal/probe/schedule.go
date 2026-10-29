@@ -27,12 +27,12 @@ func Schedule(ctx context.Context, interval time.Duration, attempt func(context.
 		return errors.New("probe attempt and result channel are required")
 	}
 	for {
-		if err := ctx.Err(); err != nil {
+		if err := contextError(ctx); err != nil {
 			return err
 		}
 		err := attempt(ctx)
 		result := Result{FinishedAt: time.Now(), Err: err}
-		if err := ctx.Err(); err != nil {
+		if err := contextError(ctx); err != nil {
 			return err
 		}
 		timer := time.NewTimer(interval)

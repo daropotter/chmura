@@ -28,7 +28,7 @@ type Readiness struct {
 // Restart rules and process-only readiness are separate concerns.
 func MonitorReadiness(ctx context.Context, processStartedAt time.Time, health *manifest.Health,
 	attempt func(context.Context, manifest.Probe) error, onChange func(Readiness)) error {
-	if err := ctx.Err(); err != nil {
+	if err := contextError(ctx); err != nil {
 		return err
 	}
 	if processStartedAt.IsZero() || health == nil || health.Check == nil || attempt == nil || onChange == nil {
@@ -41,7 +41,7 @@ func MonitorReadiness(ctx context.Context, processStartedAt time.Time, health *m
 	deadline := processStartedAt.Add(time.Duration(config.StartupTimeout))
 	state := Readiness{}
 	failStartup := func() error {
-		if err := ctx.Err(); err != nil {
+		if err := contextError(ctx); err != nil {
 			return err
 		}
 		state.StartupFailed = true
@@ -59,8 +59,8 @@ func MonitorReadiness(ctx context.Context, processStartedAt time.Time, health *m
 			ctx, stop := context.WithTimeout(ctx, time.Duration(config.Check.Timeout))
 			defer stop()
 			err := attempt(ctx, *config.Check)
-			if ctx.Err() != nil {
-				return ctx.Err()
+			if cause := contextError(ctx); cause != nil {
+				return cause
 			}
 			return err
 		}, results)
@@ -100,7 +100,7 @@ func MonitorReadiness(ctx context.Context, processStartedAt time.Time, health *m
 		return nil
 	}
 	for {
-		if err := ctx.Err(); err != nil {
+		if err := contextError(ctx); err != nil {
 			return err
 		}
 		select {

@@ -78,6 +78,22 @@ func TestReadinessAlreadyCanceledDoesNotStart(t *testing.T) {
 	}
 }
 
+func TestReadinessAttemptCompletingAtItsDeadlineIsFailure(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		defer cancel()
+		config := readinessConfig()
+		config.Check.Timeout = manifest.Duration(20 * time.Millisecond)
+		config.StartupTimeout = manifest.Duration(50 * time.Millisecond)
+		var last probe.Readiness
+		started := time.Now()
+		err := probe.MonitorReadiness(ctx, started, config, func(context.Context, manifest.Probe) error { time.Sleep(20 * time.Millisecond); return nil }, func(state probe.Readiness) { last = state })
+		if !errors.Is(err, probe.ErrStartupTimeout) || !last.StartupFailed || last.EverReady || time.Since(started) != 50*time.Millisecond {
+			t.Fatalf("deadline completion counted as readiness: state=%#v error=%v elapsed=%v", last, err, time.Since(started))
+		}
+	})
+}
+
 func TestReadinessDefaultsAndNoStartupDeadlineAfterFirstReadiness(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
