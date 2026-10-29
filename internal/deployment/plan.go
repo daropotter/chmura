@@ -58,7 +58,7 @@ func PlanInstance(project *manifest.Project, application string) (*InstancePlan,
 		}
 		return nil, fmt.Errorf("applications.%s.source: %w", application, ErrBuildRequired)
 	}
-	if _, err := reference.Parse(app.Source.Image); err != nil {
+	if _, err := reference.ParseNormalizedNamed(app.Source.Image); err != nil {
 		return nil, fmt.Errorf("applications.%s.source.image: %w", application, err)
 	}
 	health := app.Health
