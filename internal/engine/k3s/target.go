@@ -50,19 +50,31 @@ type Resolver struct {
 // ports and owns the lookup deadline. Resolution does not pin an IP to a
 // generation; lifecycle supervision must stop probes when that generation exits.
 func (r Resolver) Resolve(ctx context.Context, ref Instance, ports map[string]manifest.Port) (Target, error) {
-	if err := ctx.Err(); err != nil {
+	pod, err := r.readPod(ctx, ref)
+	if err != nil {
 		return Target{}, err
 	}
+	return targetFromPod(pod, ref, ports)
+}
+
+func (r Resolver) readPod(ctx context.Context, ref Instance) (*corev1.Pod, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if r.Client == nil || ref.Namespace == "" || ref.PodName == "" || ref.PodUID == "" || ref.ContainerName == "" || ref.ContainerID == "" {
-		return Target{}, errors.New("target resolution requires a client and a complete instance generation")
+		return nil, errors.New("target resolution requires a client and a complete instance generation")
 	}
 	pod, err := r.Client.Pods(ref.Namespace).Get(ctx, ref.PodName, metav1.GetOptions{})
 	if cause := ctx.Err(); cause != nil {
-		return Target{}, cause
+		return nil, cause
 	}
 	if err != nil {
-		return Target{}, fmt.Errorf("read runtime instance: %w", err)
+		return nil, fmt.Errorf("read runtime instance: %w", err)
 	}
+	return pod, nil
+}
+
+func targetFromPod(pod *corev1.Pod, ref Instance, ports map[string]manifest.Port) (Target, error) {
 	if pod == nil {
 		return Target{}, ErrInstanceUnavailable
 	}

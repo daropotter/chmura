@@ -59,6 +59,22 @@ This is a point-in-time observation. Resolution does not pin an IP to a process
 generation; lifecycle supervision must cancel checks when that generation exits
 or is replaced. Concrete process/exec operations and agent wiring follow later.
 
+`Resolver.Observe` joins that snapshot to a name-filtered watch starting from
+its resource version. Once the watch opens, it calls `onStart` once with the
+snapshot target; the callback must return promptly. The owner can start checks
+there, then cancel them and wait for cleanup when observation returns. A
+deleted/non-running instance returns `ErrInstanceUnavailable`, while a changed
+pod UID or container ID returns `ErrStaleInstance`. Readiness changes, bookmarks
+and repeated valid events do not restart the observer or the checks.
+
+Watch closure, API errors (including an expired resource version), invalid events
+or changed target address/start time return `ErrObservationLost` and preserve
+any API error cause. This means observation continuity is unknown, rather than
+that the application failed a health check. The observer closes its stream,
+does not reconnect or adopt a new generation, and leaves explicit reconciliation
+to the owner. Parent stop retains its context cause. Neither snapshot nor watch
+pins an IP to a generation or makes runtime event delivery instantaneous.
+
 `probe.Schedule` serially invokes an attempt function for one check. It starts
 immediately and waits at least one interval from each completion before the next
 attempt. Results retain their completion time even if delivery is delayed. The
