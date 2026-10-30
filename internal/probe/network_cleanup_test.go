@@ -3,6 +3,7 @@ package probe_test
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"testing"
 	"testing/synctest"
@@ -56,5 +57,41 @@ func TestHTTPProbeWaitsForDialCleanup(t *testing.T) {
 				})
 			})
 		}
+	}
+}
+
+func TestHTTPProbeClosesConnectionReturnedAfterCancellation(t *testing.T) {
+	for _, protocol := range []string{"http", "https"} {
+		t.Run(protocol, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				peer, conn := net.Pipe()
+				defer peer.Close()
+				defer conn.Close()
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+				runner := probe.Network{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+					close(started)
+					<-ctx.Done()
+					close(canceled)
+					<-release
+					return conn, nil
+				}}
+				endpoint := probe.Target{Host: "app.test", Ports: map[string]manifest.Port{"service": {Number: 8080, Protocol: protocol}}}
+				done := make(chan error, 1)
+				go func() { done <- runner.Run(ctx, endpoint, httpCheck()) }()
+				<-started
+				cancel()
+				<-canceled
+				close(release)
+				if err := <-done; !errors.Is(err, context.Canceled) {
+					t.Fatalf("late dial lost cancellation: %v", err)
+				}
+				_ = peer.SetReadDeadline(time.Now().Add(time.Second))
+				if _, err := peer.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
+					t.Fatalf("late connection was not closed: %v", err)
+				}
+			})
+		})
 	}
 }
