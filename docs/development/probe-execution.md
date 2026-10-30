@@ -150,3 +150,38 @@ Process-only readiness without an explicit probe, further runtime operations,
 restart actions and agent/engine integration remain separate increments. The
 cluster agent will use these components; the CLI continues to talk only to the
 control-plane API.
+
+## Readiness publication
+
+`k3s.ReadinessWriter.Apply` publishes one decision to the `chmura/ready` Pod
+condition through an explicitly configured client. It requires a complete
+container generation, an observed resource version and an idempotency key.
+`Resolver.Resolve` and the initial `Observe` target expose their snapshot version.
+Only a running Chmura-owned Pod with the declared gate can be changed. Pod or
+container replacement, termination and foreign ownership fail before mutation.
+
+The writer updates only its condition through the status subresource. Native
+readiness, container status, other conditions and workload configuration remain
+untouched. An unchanged readiness value preserves its last transition time.
+This adapter neither runs probes nor creates endpoints or routes traffic.
+
+The condition records hashes of the key and versioned intent, never the raw key.
+An identical retry can recognize acceptance after a lost response, including
+after unrelated kubelet status updates. Reusing the latest key with a different
+intent is a conflict. Only the latest receipt is retained; durable operation
+history remains a control-plane responsibility.
+
+The base resource version fences the write against intervening updates, even
+between its read and write. On conflict the writer reads once to recognize an
+identical concurrent request; it never reapplies an old decision against a new
+version. An older result cannot overwrite a newer accepted result. The owner
+must reconcile the current local readiness decision and runtime snapshot before
+issuing a new request with a new key. API and context error causes are retained;
+cancellation or transport failure can leave an accepted update.
+
+Publication belongs in a separate reporting worker. Probe observers must return
+promptly and perform no outbound I/O. The owner must serialize decisions and own observation
+continuity; resource-version checks are not a distributed supervisor lease.
+Reconciliation, persistence of `EverReady`, restart supervision and actual agent
+wiring remain later increments. Tests use local HTTP API servers, not a live
+cluster.

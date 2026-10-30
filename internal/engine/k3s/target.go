@@ -30,6 +30,7 @@ type Instance struct {
 type Target struct {
 	Network          probe.Target
 	ProcessStartedAt time.Time
+	ResourceVersion  string
 }
 
 // ErrStaleInstance means the observed pod or container replaced the selected generation.
@@ -111,6 +112,7 @@ func targetFromPod(pod *corev1.Pod, ref Instance, ports map[string]manifest.Port
 		return Target{
 			Network:          probe.Target{Host: ip.String(), Ports: maps.Clone(ports)},
 			ProcessStartedAt: status.State.Running.StartedAt.Time,
+			ResourceVersion:  pod.ResourceVersion,
 		}, nil
 	}
 	return Target{}, fmt.Errorf("%w: application container status is absent", ErrInstanceUnavailable)

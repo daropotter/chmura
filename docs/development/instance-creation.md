@@ -56,5 +56,7 @@ This is idempotence of the current desired resource, not a permanent operation
 receipt. If a Pod has been deleted, Ensure can recreate it. Before exposing this
 through the public API, durable control-plane operations must retain results and
 retire old requests so replay cannot resurrect obsolete work. Image resolution,
-admission, readiness-gate updates, restart actions and agent/control-plane wiring
-remain separate responsibilities. No live cluster was changed by the tests.
+admission, restart actions and agent/control-plane wiring remain separate
+responsibilities. The [readiness writer](probe-execution.md#readiness-publication)
+publishes generation-bound gate updates separately from creation. No live cluster
+was changed by the tests.
