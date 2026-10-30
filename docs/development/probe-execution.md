@@ -198,3 +198,7 @@ continuity; resource-version checks are not a distributed supervisor lease.
 Reconciliation, persistence of `EverReady`, restart supervision and actual agent
 wiring remain later increments. Tests use local HTTP API servers, not a live
 cluster.
+
+The [instance supervisor](instance-supervision.md) now joins lifecycle observation
+with readiness and healthy monitoring. Outbound publication remains a separate
+worker responsibility.
