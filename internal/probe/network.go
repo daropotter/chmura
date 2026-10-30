@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/daropotter/chmura/internal/manifest"
@@ -92,11 +93,37 @@ func (n Network) Run(ctx context.Context, target Target, check manifest.Probe) e
 		return errors.New("HTTP probe requires an absolute request path")
 	}
 	u.Scheme, u.Host = port.Protocol, address
+	var dialMu sync.Mutex
+	var dialing sync.WaitGroup
+	stopping := false
+	defer func() {
+		cancel()
+		dialMu.Lock()
+		stopping = true
+		dialMu.Unlock()
+		dialing.Wait()
+	}()
 	transport := &http.Transport{
 		// Bind dialing to this attempt; net/http may detach its dial context
-		// from a request so a connection can be reused by another request.
+		// and stop waiting before the callback finishes. Fence new callbacks
+		// during return and join those already started before releasing the owner.
 		DialContext: func(_ context.Context, network, address string) (net.Conn, error) {
-			return dial(ctx, network, address)
+			dialMu.Lock()
+			if stopping {
+				dialMu.Unlock()
+				return nil, ctx.Err()
+			}
+			dialing.Add(1)
+			dialMu.Unlock()
+			defer dialing.Done()
+			conn, err := dial(ctx, network, address)
+			if cause := ctx.Err(); cause != nil {
+				if conn != nil {
+					_ = conn.Close()
+				}
+				return nil, cause
+			}
+			return conn, err
 		},
 		TLSClientConfig:     &tls.Config{RootCAs: n.RootCAs, ServerName: n.ServerName},
 		TLSHandshakeTimeout: time.Duration(effective.Timeout),
