@@ -82,8 +82,8 @@ func targetFromPod(pod *corev1.Pod, ref Instance, ports map[string]manifest.Port
 	if pod.Namespace != ref.Namespace || pod.Name != ref.PodName || string(pod.UID) != ref.PodUID {
 		return Target{}, fmt.Errorf("%w: pod identity changed", ErrStaleInstance)
 	}
-	if pod.DeletionTimestamp != nil || pod.Status.Phase != corev1.PodRunning {
-		return Target{}, fmt.Errorf("%w: pod is not running or is terminating", ErrInstanceUnavailable)
+	if pod.DeletionTimestamp != nil {
+		return Target{}, fmt.Errorf("%w: pod is terminating", ErrInstanceUnavailable)
 	}
 	declared := false
 	for _, container := range pod.Spec.Containers {
@@ -102,7 +102,13 @@ func targetFromPod(pod *corev1.Pod, ref Instance, ports map[string]manifest.Port
 		if status.ContainerID != "" && status.ContainerID != ref.ContainerID {
 			return Target{}, fmt.Errorf("%w: container identity changed", ErrStaleInstance)
 		}
-		if status.ContainerID == "" || status.State.Running == nil || status.State.Running.StartedAt.IsZero() {
+		if status.ContainerID == "" {
+			return Target{}, fmt.Errorf("%w: application container identity is absent", ErrInstanceUnavailable)
+		}
+		if err := reportedExit(pod, status, ref); err != nil {
+			return Target{}, err
+		}
+		if pod.Status.Phase != corev1.PodRunning || status.State.Running == nil || status.State.Running.StartedAt.IsZero() || status.State.Terminated != nil || status.State.Waiting != nil {
 			return Target{}, fmt.Errorf("%w: application container is not running", ErrInstanceUnavailable)
 		}
 		ip, err := netip.ParseAddr(pod.Status.PodIP)

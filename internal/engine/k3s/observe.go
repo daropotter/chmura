@@ -77,6 +77,15 @@ func (r Resolver) Observe(ctx context.Context, ref Instance, ports map[string]ma
 					return observationFailure(ctx, errors.New("watch returned an incomplete pod identity"))
 				}
 				current, err := targetFromPod(pod, ref, nil)
+				var exited *InstanceExitError
+				if errors.As(err, &exited) {
+					if event.Type == watch.Deleted {
+						return fmt.Errorf("%w: pod was deleted", ErrInstanceUnavailable)
+					}
+					if !exited.StartedAt.Equal(target.ProcessStartedAt) {
+						return observationFailure(ctx, errors.New("exited process start time changed"))
+					}
+				}
 				if err != nil {
 					return err
 				}
