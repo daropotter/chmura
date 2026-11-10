@@ -23,6 +23,9 @@ The attempt deadline covers dialing, TLS negotiation and HTTP response headers.
 Parent cancellation and an earlier parent deadline take precedence. Timeout or
 cancellation closes outstanding network work; errors retain their context cause
 for `errors.Is`. An unexpected HTTP response returns `StatusError` with its code.
+HTTP cancellation also waits for started dial callbacks to finish cleanup, even
+when the HTTP transport has already stopped waiting. Callbacks not yet started
+are fenced out during return; a connection returned after cancellation is closed.
 
 `probe.Runtime.Run` performs a process or exec attempt through callbacks bound
 to one runtime instance. The adapter supplies `ProcessRunning` for a named
