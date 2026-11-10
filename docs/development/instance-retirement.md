@@ -30,3 +30,6 @@ creation intent. Permanent operation receipts and retiring obsolete requests
 remain control-plane responsibilities. API absence is an engine fact; physical
 fencing and distributed ownership require additional control-plane guarantees.
 Tests use local HTTP API servers and typed clients, not a live cluster.
+
+The [restart executor](instance-restart.md) joins confirmed retirement to explicit
+creation of a new generation under a different key.
