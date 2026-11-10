@@ -21,6 +21,13 @@ their meaning: `ErrStartupTimeout`, `ErrUnhealthy`, runtime unavailability or
 replacement, and `ErrObservationLost` are distinct. In particular, losing a watch
 is not evidence of an application crash or a failed health check.
 
+A runtime-reported exit of the selected generation is further distinguished by
+`ErrInstanceExited`/`InstanceExitError`, retaining identity, version and exit
+facts while remaining an unavailable instance for existing callers. Incomplete
+or unknown reports and explicit deletion stay distinct. The supervisor cancels
+and joins checks before forwarding this cause; the owner decides whether an
+authorized restart should follow.
+
 Readiness callbacks run serially, publish the initial state and changes, and
 must return promptly without outbound I/O. Any current readiness is revoked
 locally when monitoring ends, while its `EverReady` fact is retained. This

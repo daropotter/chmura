@@ -58,6 +58,19 @@ the application's declared ports, and the container's actual start time rather
 than pod creation/image-pull time. API errors retain their cause, and the caller
 owns the lookup deadline.
 
+A complete current termination report returns `InstanceExitError`, recognizable
+as both `ErrInstanceExited` and the broader `ErrInstanceUnavailable`. It retains
+the exact Pod/container reference, resource version, process exit code, runtime
+reason and start/finish times. These are private engine facts, not public CLI
+exit codes or a restart decision. Exit evidence does not require a remaining IP.
+
+The selected and terminated container IDs must both match, timestamps must be
+present and ordered, and the report must be unambiguous in a running/terminal
+Pod phase. Missing facts, unknown/pending phase, synthetic `ContainerStatusUnknown`
+termination, historical `LastTerminationState` and a Pod already being deleted
+do not produce an exit signal. Kubelet can synthesize terminated state for an
+unknown runtime status; the terminated field alone is not sufficient evidence.
+
 This is a point-in-time observation. Resolution does not pin an IP to a process
 generation; lifecycle supervision must cancel checks when that generation exits
 or is replaced. Concrete process/exec operations and agent wiring follow later.
@@ -66,9 +79,17 @@ or is replaced. Concrete process/exec operations and agent wiring follow later.
 its resource version. Once the watch opens, it calls `onStart` once with the
 snapshot target; the callback must return promptly. The owner can start checks
 there, then cancel them and wait for cleanup when observation returns. A
-deleted/non-running instance returns `ErrInstanceUnavailable`, while a changed
+deleted or otherwise unavailable instance returns `ErrInstanceUnavailable`, while a changed
 pod UID or container ID returns `ErrStaleInstance`. Readiness changes, bookmarks
 and repeated valid events do not restart the observer or the checks.
+
+A current, matching termination event preserves `InstanceExitError` through
+observation and supervision, including cancellation/join of active checks.
+Its reported start time must match the watched running generation; a mismatch
+is `ErrObservationLost`. A DELETED event remains generic unavailability even
+if it carries a final termination report, so deletion is not an implicit exit
+or restart authorization. API-reported exit is not physical fencing; owner
+authorization and restart reconciliation remain separate responsibilities.
 
 Watch closure, API errors (including an expired resource version), invalid events
 or changed target address/start time return `ErrObservationLost` and preserve
