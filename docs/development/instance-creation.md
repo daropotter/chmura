@@ -60,3 +60,7 @@ admission, restart actions and agent/control-plane wiring remain separate
 responsibilities. The [readiness writer](probe-execution.md#readiness-publication)
 publishes generation-bound gate updates separately from creation. No live cluster
 was changed by the tests.
+
+The [retirement adapter](instance-retirement.md) can gracefully retire an explicit
+generation before a replacement. Delete acknowledgement and confirmed absence
+are separate outcomes.
