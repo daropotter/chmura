@@ -28,12 +28,23 @@ type Readiness struct {
 // Restart rules and process-only readiness are separate concerns.
 func MonitorReadiness(ctx context.Context, processStartedAt time.Time, health *manifest.Health,
 	attempt func(context.Context, manifest.Probe) error, onChange func(Readiness)) error {
+	return MonitorReadinessWithHistory(ctx, processStartedAt, health, false, attempt, onChange)
+}
+
+// MonitorReadinessWithHistory resumes monitoring with the owner's known first
+// readiness fact for this exact process generation. It never assumes current
+// readiness: streaks start empty and the success threshold must be met again.
+// A true everReady permanently disables the startup deadline. The owner must
+// preserve this fact across observation gaps and never transfer it to another
+// generation; native readiness flags are not sufficient evidence.
+func MonitorReadinessWithHistory(ctx context.Context, processStartedAt time.Time, health *manifest.Health, everReady bool,
+	attempt func(context.Context, manifest.Probe) error, onChange func(Readiness)) error {
 	notifications := make(chan struct{})
-	return monitorReadiness(ctx, processStartedAt, health, attempt, onChange,
+	return monitorReadiness(ctx, processStartedAt, health, everReady, attempt, onChange,
 		&completion{notify: notifications, ready: notifications})
 }
 
-func monitorReadiness(ctx context.Context, processStartedAt time.Time, health *manifest.Health,
+func monitorReadiness(ctx context.Context, processStartedAt time.Time, health *manifest.Health, everReady bool,
 	attempt func(context.Context, manifest.Probe) error, onChange func(Readiness), results *completion) error {
 	if err := contextError(ctx); err != nil {
 		return err
@@ -46,7 +57,7 @@ func monitorReadiness(ctx context.Context, processStartedAt time.Time, health *m
 		return errors.New("readiness timings and thresholds must be positive")
 	}
 	deadline := processStartedAt.Add(time.Duration(config.StartupTimeout))
-	state := Readiness{}
+	state := Readiness{EverReady: everReady}
 	failStartup := func() error {
 		if err := contextError(ctx); err != nil {
 			return err
@@ -55,7 +66,7 @@ func monitorReadiness(ctx context.Context, processStartedAt time.Time, health *m
 		onChange(state)
 		return ErrStartupTimeout
 	}
-	if !time.Now().Before(deadline) {
+	if !state.EverReady && !time.Now().Before(deadline) {
 		return failStartup()
 	}
 	onChange(state)
@@ -76,6 +87,10 @@ func monitorReadiness(ctx context.Context, processStartedAt time.Time, health *m
 	timer := time.NewTimer(time.Until(deadline))
 	defer timer.Stop()
 	startup := timer.C
+	if state.EverReady {
+		timer.Stop()
+		startup = nil
+	}
 	var successes, failures manifest.Threshold
 	apply := func(result Result) error {
 		if !state.EverReady && !result.FinishedAt.Before(deadline) {

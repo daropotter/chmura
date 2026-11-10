@@ -124,6 +124,16 @@ instance facts; outbound reporting must be decoupled so a control-plane outage
 cannot block readiness processing or its startup deadline. The monitor only
 uses `health.check` and `ready`, leaving restart rules independent.
 
+`MonitorReadinessWithHistory` additionally accepts the owner's previously known
+`EverReady` fact for the same process generation. A resumed monitor starts
+currently unready with empty streaks and must reacquire the full success
+threshold, but a known first readiness permanently disables the startup deadline.
+Without that history, the original process start time still bounds startup;
+starting a new monitor never renews the budget. The owner must retain the fact
+across observation gaps, bind it to the exact generation, and supply it from
+trusted Chmura history rather than native readiness flags. This function does not
+persist history or resume a generation already declared failed.
+
 ## Healthy monitoring
 
 `probe.MonitorHealthy` evaluates an explicit `healthy.check` independently of

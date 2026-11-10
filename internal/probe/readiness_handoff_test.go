@@ -42,7 +42,7 @@ func TestReadinessStartupUsesCompletionBeforeNotification(t *testing.T) {
 				updates, done := make(chan Readiness, 8), make(chan error, 1)
 				go func() {
 					calls := 0
-					done <- monitorReadiness(ctx, time.Now(), config, func(context.Context, manifest.Probe) error {
+					done <- monitorReadiness(ctx, time.Now(), config, false, func(context.Context, manifest.Probe) error {
 						calls++
 						if tc.prior && calls == 1 {
 							return nil
