@@ -28,6 +28,7 @@ type gateStore struct {
 	getStatus, putStatus int
 	interfere            func(*corev1.Pod)
 	dropReply            bool
+	beforeRequest        func(http.ResponseWriter, *http.Request) bool
 }
 
 func (s *gateStore) snapshot() (*corev1.Pod, int, int) {
@@ -44,6 +45,9 @@ func gateClient(t *testing.T, s *gateStore) *coreclient.CoreV1Client {
 	s.pod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionFalse, Reason: "ReadinessGatesNotReady"}}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if s.beforeRequest != nil && !s.beforeRequest(w, r) {
+			return
+		}
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		s.requests++

@@ -34,10 +34,10 @@ a container ID, or publish status. The caller must retain generation history and
 reconcile a gap explicitly; native Kubernetes readiness cannot supply that
 history. A generation already declared failed must not be resumed.
 
-The next layer is a serialized reporting/reconciliation worker around the
-[readiness writer](probe-execution.md#readiness-publication). It must decouple
-probe callbacks from outbound I/O and reconcile current state after conflicts or
-failures. Durable history, distributed supervisor ownership, restart execution,
-agent wiring and API/CLI deployment remain separate increments. Tests join real
+The [readiness reporter](readiness-reporting.md) serializes publication through
+the [readiness writer](probe-execution.md#readiness-publication), keeping API I/O
+outside probe callbacks. The owner drains the final local state before stopping
+the reporter. Durable history, distributed supervisor ownership, restart
+execution, agent wiring and API/CLI deployment remain separate increments. Tests join real
 typed clients to local HTTP API/watch and application servers; a live k3s
 deployment is not yet verified.
