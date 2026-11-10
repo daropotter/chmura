@@ -3,8 +3,8 @@ package probe_test
 import (
 	"context"
 	"errors"
-	"io"
 	"net"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -60,6 +60,22 @@ func TestHTTPProbeWaitsForDialCleanup(t *testing.T) {
 	}
 }
 
+type delayedCloseConn struct {
+	net.Conn
+	started, release, finished chan struct{}
+	once                       sync.Once
+}
+
+func (c *delayedCloseConn) Close() error {
+	c.once.Do(func() {
+		close(c.started)
+		<-c.release
+		_ = c.Conn.Close()
+		close(c.finished)
+	})
+	return nil
+}
+
 func TestHTTPProbeClosesConnectionReturnedAfterCancellation(t *testing.T) {
 	for _, protocol := range []string{"http", "https"} {
 		t.Run(protocol, func(t *testing.T) {
@@ -67,6 +83,11 @@ func TestHTTPProbeClosesConnectionReturnedAfterCancellation(t *testing.T) {
 				peer, conn := net.Pipe()
 				defer peer.Close()
 				defer conn.Close()
+				closing, releaseClose, closed := make(chan struct{}), make(chan struct{}), make(chan struct{})
+				var releaseOnce sync.Once
+				releaseCleanup := func() { releaseOnce.Do(func() { close(releaseClose) }) }
+				defer releaseCleanup()
+				tracked := &delayedCloseConn{Conn: conn, started: closing, release: releaseClose, finished: closed}
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
 				started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
@@ -75,7 +96,7 @@ func TestHTTPProbeClosesConnectionReturnedAfterCancellation(t *testing.T) {
 					<-ctx.Done()
 					close(canceled)
 					<-release
-					return conn, nil
+					return tracked, nil
 				}}
 				endpoint := probe.Target{Host: "app.test", Ports: map[string]manifest.Port{"service": {Number: 8080, Protocol: protocol}}}
 				done := make(chan error, 1)
@@ -84,12 +105,32 @@ func TestHTTPProbeClosesConnectionReturnedAfterCancellation(t *testing.T) {
 				cancel()
 				<-canceled
 				close(release)
-				if err := <-done; !errors.Is(err, context.Canceled) {
-					t.Fatalf("late dial lost cancellation: %v", err)
+				returned := false
+				select {
+				case <-closing:
+				case err := <-done:
+					t.Errorf("probe returned before late connection close: %v", err)
+					returned = true
 				}
-				_ = peer.SetReadDeadline(time.Now().Add(time.Second))
-				if _, err := peer.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
-					t.Fatalf("late connection was not closed: %v", err)
+				synctest.Wait()
+				if !returned {
+					select {
+					case err := <-done:
+						t.Errorf("probe returned before late connection cleanup finished: %v", err)
+						returned = true
+					default:
+					}
+				}
+				releaseCleanup()
+				if !returned {
+					if err := <-done; !errors.Is(err, context.Canceled) {
+						t.Fatalf("late dial lost cancellation: %v", err)
+					}
+					select {
+					case <-closed:
+					default:
+						t.Error("probe returned before late connection was closed")
+					}
 				}
 			})
 		})
