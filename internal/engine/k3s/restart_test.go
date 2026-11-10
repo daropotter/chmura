@@ -3,13 +3,17 @@ package k3s_test
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/daropotter/chmura/internal/engine/k3s"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func restartRequest(t *testing.T, previous k3s.InstanceRequest, ref k3s.Instance) k3s.RestartRequest {
@@ -100,6 +104,116 @@ func TestRestartConcurrentReplayCreatesOnlyOneSuccessor(t *testing.T) {
 	defer s.mu.Unlock()
 	if s.creates != 1 || len(s.pods) != 1 || created != 1 {
 		t.Fatalf("concurrent duplicate: creates=%d pods=%d results=%d", s.creates, len(s.pods), created)
+	}
+}
+
+func TestRestartConcurrentRetirementAcknowledgesTheSameGeneration(t *testing.T) {
+	const callers = 4
+	barrier := make(chan struct{})
+	var arrivals atomic.Int32
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(barrier) }) }
+	defer release()
+	s := &lifetimeStore{beforeDelete: func(r *http.Request) {
+		if arrivals.Add(1) == callers {
+			release()
+		}
+		select {
+		case <-barrier:
+		case <-r.Context().Done():
+		}
+	}}
+	client, previous, ref := lifetimeClient(t, s)
+	request := restartRequest(t, previous, ref)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	type outcome struct {
+		result k3s.RestartResult
+		err    error
+	}
+	done := make(chan outcome, callers)
+	for range callers {
+		go func() {
+			result, err := (k3s.Restarter{Client: client}).Ensure(ctx, request)
+			done <- outcome{result, err}
+		}()
+	}
+	// The DELETE barrier forces all callers to have read the old resource version.
+	for range callers {
+		select {
+		case got := <-done:
+			if got.err != nil || !got.result.Retiring || got.result.Instance.Identity.PodUID != "" {
+				t.Fatalf("concurrent retirement: result=%#v error=%v", got.result, got.err)
+			}
+		case <-ctx.Done():
+			t.Fatal("concurrent retirement did not finish")
+		}
+	}
+	pod, deletes, _ := s.snapshot(ref.PodName)
+	s.mu.Lock()
+	creates := s.creates
+	s.mu.Unlock()
+	if deletes != 1 || creates != 0 || pod.DeletionTimestamp == nil {
+		t.Fatalf("retirement: deletes=%d creates=%d", deletes, creates)
+	}
+	s.mu.Lock()
+	delete(s.pods, ref.PodName)
+	s.mu.Unlock()
+	result, err := (k3s.Restarter{Client: client}).Ensure(ctx, request)
+	if err != nil || result.Retiring || result.Instance.Identity.PodUID != "new-uid-1" {
+		t.Fatalf("successor after retirement: %#v %v", result, err)
+	}
+}
+
+func TestRestartRetirementConflictDoesNotHideUnrelatedChanges(t *testing.T) {
+	for _, mode := range []string{"active status update", "replacement", "foreign terminating owner", "changed terminating container", "forbidden reread"} {
+		t.Run(mode, func(t *testing.T) {
+			s := &lifetimeStore{}
+			client, previous, ref := lifetimeClient(t, s)
+			var attempts atomic.Int32
+			s.mu.Lock()
+			s.beforeDelete = func(*http.Request) { attempts.Add(1) }
+			s.interfere = func(pod *corev1.Pod) {
+				switch mode {
+				case "replacement":
+					pod.UID = "replacement"
+				case "foreign terminating owner":
+					now := metav1.Now()
+					pod.DeletionTimestamp = &now
+					pod.Labels["app.kubernetes.io/managed-by"] = "other"
+				case "changed terminating container":
+					now := metav1.Now()
+					pod.DeletionTimestamp = &now
+					pod.Status.ContainerStatuses[0].ContainerID = "other"
+				case "forbidden reread":
+					s.getStatus = 403
+				}
+			}
+			s.mu.Unlock()
+			_, err := (k3s.Restarter{Client: client}).Ensure(context.Background(), restartRequest(t, previous, ref))
+			if err == nil {
+				t.Fatal("retirement conflict was hidden")
+			}
+			if mode == "active status update" && !apierrors.IsConflict(err) || mode == "replacement" && !errors.Is(err, k3s.ErrStaleInstance) || mode == "foreign terminating owner" && !errors.Is(err, k3s.ErrInstanceConflict) || mode == "changed terminating container" && !errors.Is(err, k3s.ErrStaleInstance) || mode == "forbidden reread" && !apierrors.IsForbidden(err) {
+				t.Fatalf("reread lost its cause: %v", err)
+			}
+			_, deletes, _ := s.snapshot(ref.PodName)
+			if deletes != 0 || attempts.Load() != 1 {
+				t.Fatal("conflict retried deletion against a fresh version")
+			}
+		})
+	}
+}
+
+func TestRestartRetirementConflictCanConfirmConcurrentAbsence(t *testing.T) {
+	s := &lifetimeStore{}
+	client, previous, ref := lifetimeClient(t, s)
+	s.mu.Lock()
+	s.interfere = func(pod *corev1.Pod) { delete(s.pods, pod.Name) }
+	s.mu.Unlock()
+	result, err := (k3s.Restarter{Client: client}).Ensure(context.Background(), restartRequest(t, previous, ref))
+	if err != nil || result.Retiring || result.Instance.Identity.PodUID != "new-uid-1" {
+		t.Fatalf("confirmed absence did not recover restart: %#v %v", result, err)
 	}
 }
 

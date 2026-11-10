@@ -29,6 +29,7 @@ type lifetimeStore struct {
 	getStatus, deleteStatus int
 	createStatus            int
 	interfere               func(*corev1.Pod)
+	beforeDelete            func(*http.Request)
 	dropReply, holdReply    bool
 	dropCreateReply         bool
 	accepted                chan struct{}
@@ -62,6 +63,12 @@ func lifetimeClient(t *testing.T, s *lifetimeStore) (*coreclient.CoreV1Client, k
 			return
 		}
 		name := strings.TrimPrefix(r.URL.Path, prefix)
+		s.mu.Lock()
+		beforeDelete := s.beforeDelete
+		s.mu.Unlock()
+		if r.Method == http.MethodDelete && beforeDelete != nil {
+			beforeDelete(r)
+		}
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		s.requests++

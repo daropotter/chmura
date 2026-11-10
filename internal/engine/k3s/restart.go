@@ -61,7 +61,21 @@ func (r Restarter) Ensure(ctx context.Context, request RestartRequest) (RestartR
 	} else if !apierrors.IsNotFound(err) {
 		return RestartResult{}, fmt.Errorf("inspect restart successor: %w", err)
 	}
-	retired, err := (Retirer{Client: r.Client}).Ensure(ctx, request.Previous, request.Instance)
+	retirer := Retirer{Client: r.Client}
+	retired, err := retirer.Ensure(ctx, request.Previous, request.Instance)
+	if apierrors.IsConflict(err) {
+		// Recognize another call's accepted retirement without retrying DELETE
+		// against a fresh version or treating an unrelated conflict as success.
+		pod, readErr := retirer.snapshot(ctx, request.Previous, request.Instance)
+		if readErr != nil {
+			return RestartResult{}, readErr
+		}
+		if pod != nil && pod.DeletionTimestamp == nil {
+			return RestartResult{}, err
+		}
+		retired.Absent = pod == nil
+		err = nil
+	}
 	if err != nil {
 		return RestartResult{}, err
 	}

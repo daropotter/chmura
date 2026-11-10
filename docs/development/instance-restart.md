@@ -14,6 +14,13 @@ generation. It then delegates to the retirement adapter. While old resource
 absence is unconfirmed, the result has `Retiring: true` and no successor
 identity. The caller repeats the same request with its own deadline/backoff.
 
+If concurrent retirement returns an API conflict, the restart executor reads
+once to verify the same UID/container, ownership, intent and execution shape.
+An already terminating generation returns Retiring; confirmed absence permits
+creation. An active generation retains the original conflict. Replacement,
+foreign ownership and read errors retain their distinct causes. This recovery
+never retries DELETE against a fresh resource version.
+
 Only confirmed absence permits the idempotent creator to submit the new Pod.
 Repeated or concurrent calls with the same request recover the same successor
 identity, including after a lost creation response. The result is acknowledged
