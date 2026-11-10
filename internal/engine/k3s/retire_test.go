@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
 )
@@ -23,9 +25,13 @@ type lifetimeStore struct {
 	mu                      sync.Mutex
 	pods                    map[string]*corev1.Pod
 	requests, deletes       int
+	creates                 int
 	getStatus, deleteStatus int
+	createStatus            int
 	interfere               func(*corev1.Pod)
+	beforeDelete            func(*http.Request)
 	dropReply, holdReply    bool
+	dropCreateReply         bool
 	accepted                chan struct{}
 }
 
@@ -49,18 +55,62 @@ func lifetimeClient(t *testing.T, s *lifetimeStore) (*coreclient.CoreV1Client, k
 	s.pods = map[string]*corev1.Pod{pod.Name: pod}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		prefix := "/api/v1/namespaces/project-a/pods/"
-		if !strings.HasPrefix(r.URL.Path, prefix) {
+		collection := "/api/v1/namespaces/project-a/pods"
+		prefix := collection + "/"
+		if r.URL.Path != collection && !strings.HasPrefix(r.URL.Path, prefix) {
 			t.Errorf("unexpected lifecycle resource: %s %s", r.Method, r.URL.Path)
 			apiStatus(w, 404)
 			return
 		}
 		name := strings.TrimPrefix(r.URL.Path, prefix)
 		s.mu.Lock()
+		beforeDelete := s.beforeDelete
+		s.mu.Unlock()
+		if r.Method == http.MethodDelete && beforeDelete != nil {
+			beforeDelete(r)
+		}
+		s.mu.Lock()
 		defer s.mu.Unlock()
 		s.requests++
 		stored := s.pods[name]
 		switch r.Method {
+		case http.MethodPost:
+			if r.URL.Path != collection {
+				t.Errorf("unexpected create path: %s", r.URL.Path)
+				apiStatus(w, 400)
+				return
+			}
+			var created corev1.Pod
+			if err := json.NewDecoder(r.Body).Decode(&created); err != nil {
+				t.Error(err)
+				apiStatus(w, 400)
+				return
+			}
+			if s.createStatus != 0 {
+				apiStatus(w, s.createStatus)
+				return
+			}
+			if s.pods[created.Name] != nil {
+				apiStatus(w, 409)
+				return
+			}
+			s.creates++
+			created.UID = types.UID(fmt.Sprintf("new-uid-%d", s.creates))
+			created.ResourceVersion = fmt.Sprintf("created-%d", s.creates)
+			created.Status.Phase = corev1.PodPending
+			s.pods[created.Name] = &created
+			if s.dropCreateReply {
+				s.dropCreateReply = false
+				conn, _, err := w.(http.Hijacker).Hijack()
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				_ = conn.Close()
+				return
+			}
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(&created)
 		case http.MethodGet:
 			if s.getStatus != 0 {
 				apiStatus(w, s.getStatus)

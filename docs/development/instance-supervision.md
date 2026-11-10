@@ -37,7 +37,9 @@ history. A generation already declared failed must not be resumed.
 The [readiness reporter](readiness-reporting.md) serializes publication through
 the [readiness writer](probe-execution.md#readiness-publication), keeping API I/O
 outside probe callbacks. The owner drains the final local state before stopping
-the reporter. Durable history, distributed supervisor ownership, restart
-execution, agent wiring and API/CLI deployment remain separate increments. Tests join real
+the reporter. The [restart executor](instance-restart.md) can then reconcile an
+explicitly authorized replacement. Durable history, distributed supervisor
+ownership, automatic restart triggering, agent wiring and API/CLI deployment
+remain separate increments. Tests join real
 typed clients to local HTTP API/watch and application servers; a live k3s
 deployment is not yet verified.

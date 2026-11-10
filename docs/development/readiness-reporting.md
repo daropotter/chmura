@@ -44,5 +44,5 @@ must never call Flush or otherwise wait for publication.
 Tests use local HTTP API/watch and application servers with real typed clients.
 They cover coalescing, blocked/canceled I/O, retry/backoff, lost responses,
 version conflicts, permanent errors, concurrent flushes and draining the final
-state from a supervisor. Agent wiring, durable history/ownership, restart actions
-and API/CLI deployment remain separate increments.
+state from a supervisor. Agent wiring, durable history/ownership, automatic restart
+triggering and API/CLI deployment remain separate increments.

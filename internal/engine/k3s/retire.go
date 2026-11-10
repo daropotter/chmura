@@ -30,45 +30,12 @@ type Retirer struct {
 // Replays verify a pending deletion or confirm absence; conflicts are returned
 // without retrying against a fresh snapshot or adopting another generation.
 func (r Retirer) Ensure(ctx context.Context, request InstanceRequest, ref Instance) (RetirementResult, error) {
-	if err := ctx.Err(); err != nil {
-		return RetirementResult{}, err
-	}
-	if r.Client == nil {
-		return RetirementResult{}, errors.New("instance retirement requires an explicit client")
-	}
-	desired, err := retirementPayload(request, ref)
+	pod, err := r.snapshot(ctx, request, ref)
 	if err != nil {
 		return RetirementResult{}, err
 	}
-	pod, err := r.Client.Pods(ref.Namespace).Get(ctx, ref.PodName, metav1.GetOptions{})
-	if cause := ctx.Err(); cause != nil {
-		return RetirementResult{}, cause
-	}
-	if apierrors.IsNotFound(err) {
+	if pod == nil {
 		return RetirementResult{Absent: true}, nil
-	}
-	if err != nil {
-		return RetirementResult{}, fmt.Errorf("read retiring instance: %w", err)
-	}
-	if pod.Namespace != ref.Namespace || pod.Name != ref.PodName || string(pod.UID) != ref.PodUID {
-		return RetirementResult{}, ErrStaleInstance
-	}
-	if pod.ResourceVersion == "" || !sameInstance(desired, pod) {
-		return RetirementResult{}, ErrInstanceConflict
-	}
-	found := false
-	for _, container := range pod.Status.ContainerStatuses {
-		if container.Name != ref.ContainerName {
-			continue
-		}
-		if container.ContainerID != "" && container.ContainerID != ref.ContainerID {
-			return RetirementResult{}, ErrStaleInstance
-		}
-		found = container.ContainerID == ref.ContainerID
-		break
-	}
-	if !found {
-		return RetirementResult{}, ErrInstanceUnavailable
 	}
 	if pod.DeletionTimestamp != nil {
 		return RetirementResult{}, nil
@@ -85,6 +52,55 @@ func (r Retirer) Ensure(ctx context.Context, request InstanceRequest, ref Instan
 		return RetirementResult{}, fmt.Errorf("retire instance: %w", err)
 	}
 	return RetirementResult{}, nil
+}
+
+// snapshot performs only a read and generation/intent validation. Nil means
+// confirmed absence; callers must not infer deletion from a conflict alone.
+func (r Retirer) snapshot(ctx context.Context, request InstanceRequest, ref Instance) (*corev1.Pod, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if r.Client == nil {
+		return nil, errors.New("instance retirement requires an explicit client")
+	}
+	desired, err := retirementPayload(request, ref)
+	if err != nil {
+		return nil, err
+	}
+	pod, err := r.Client.Pods(ref.Namespace).Get(ctx, ref.PodName, metav1.GetOptions{})
+	if cause := ctx.Err(); cause != nil {
+		return nil, cause
+	}
+	if apierrors.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read retiring instance: %w", err)
+	}
+	if pod == nil {
+		return nil, ErrInstanceUnavailable
+	}
+	if pod.Namespace != ref.Namespace || pod.Name != ref.PodName || string(pod.UID) != ref.PodUID {
+		return nil, ErrStaleInstance
+	}
+	if pod.ResourceVersion == "" || !sameInstance(desired, pod) {
+		return nil, ErrInstanceConflict
+	}
+	found := false
+	for _, container := range pod.Status.ContainerStatuses {
+		if container.Name != ref.ContainerName {
+			continue
+		}
+		if container.ContainerID != "" && container.ContainerID != ref.ContainerID {
+			return nil, ErrStaleInstance
+		}
+		found = container.ContainerID == ref.ContainerID
+		break
+	}
+	if !found {
+		return nil, ErrInstanceUnavailable
+	}
+	return pod, nil
 }
 
 func retirementPayload(request InstanceRequest, ref Instance) (*corev1.Pod, error) {
