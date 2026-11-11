@@ -8,6 +8,14 @@ declaration and canonical resolved artifact must remain the same; a newly
 admitted node/allocation may be supplied explicitly. A restart does not silently
 become a rollout or choose placement/resources.
 
+For an automatic restart, `Supervisor.Monitor` returns `RestartNeededError`
+after a confirmed process exit or the independent healthy threshold. Its
+`Request(previous, next)` method binds the supervised generation and effective
+plan to the explicit creation requests, without I/O. The original cause remains
+available through error unwrapping. This is a decision handoff, not execution:
+the owner must still complete the authorization, reporting, serialization and
+durable-operation steps below before calling `Restarter.Ensure`.
+
 The adapter validates both requests before any API calls and inspects an
 existing successor for key/intent/ownership conflicts before retiring the old
 generation. It then delegates to the retirement adapter. While old resource
