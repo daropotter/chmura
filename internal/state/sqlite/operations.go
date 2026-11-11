@@ -27,19 +27,16 @@ func (s *Store) Accept(ctx context.Context, request state.Submission) (state.Ope
 	}
 	key := sha256.Sum256([]byte(request.IdempotencyKey))
 	keyHash := hex.EncodeToString(key[:])
-	var operation state.Operation
-	err := s.db.QueryRowContext(ctx, `INSERT INTO operations (id, scope, key_hash, kind, intent)
+	operation, err := scanOperation(s.db.QueryRowContext(ctx, `INSERT INTO operations (id, scope, key_hash, kind, intent)
 		VALUES (?, ?, ?, ?, ?) ON CONFLICT (scope, key_hash) DO NOTHING
-		RETURNING id, scope, kind, intent`, "op_"+rand.Text(), request.Scope, keyHash, request.Kind, request.Intent).
-		Scan(&operation.ID, &operation.Scope, &operation.Kind, &operation.Intent)
+		RETURNING `+operationColumns, "op_"+rand.Text(), request.Scope, keyHash, request.Kind, request.Intent))
 	if err == nil {
 		return operation, true, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return state.Operation{}, false, fmt.Errorf("accept operation: %w", err)
 	}
-	err = s.db.QueryRowContext(ctx, `SELECT id, scope, kind, intent FROM operations WHERE scope = ? AND key_hash = ?`, request.Scope, keyHash).
-		Scan(&operation.ID, &operation.Scope, &operation.Kind, &operation.Intent)
+	operation, err = scanOperation(s.db.QueryRowContext(ctx, `SELECT `+operationColumns+` FROM operations WHERE scope = ? AND key_hash = ?`, request.Scope, keyHash))
 	if err != nil {
 		return state.Operation{}, false, fmt.Errorf("read operation acceptance: %w", err)
 	}
@@ -51,9 +48,7 @@ func (s *Store) Accept(ctx context.Context, request state.Submission) (state.Ope
 
 // Get reads an operation only within the caller's already authorized scope.
 func (s *Store) Get(ctx context.Context, scope, id string) (state.Operation, error) {
-	var operation state.Operation
-	err := s.db.QueryRowContext(ctx, `SELECT id, scope, kind, intent FROM operations WHERE scope = ? AND id = ?`, scope, id).
-		Scan(&operation.ID, &operation.Scope, &operation.Kind, &operation.Intent)
+	operation, err := scanOperation(s.db.QueryRowContext(ctx, `SELECT `+operationColumns+` FROM operations WHERE scope = ? AND id = ?`, scope, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return state.Operation{}, state.ErrNotFound
 	}
@@ -61,4 +56,12 @@ func (s *Store) Get(ctx context.Context, scope, id string) (state.Operation, err
 		return state.Operation{}, fmt.Errorf("read operation: %w", err)
 	}
 	return operation, nil
+}
+
+const operationColumns = "id, scope, kind, intent, status, version, result"
+
+func scanOperation(row *sql.Row) (state.Operation, error) {
+	var op state.Operation
+	err := row.Scan(&op.ID, &op.Scope, &op.Kind, &op.Intent, &op.Status, &op.Version, &op.Result)
+	return op, err
 }
