@@ -16,6 +16,9 @@ import (
 //go:embed schema.sql
 var schema string
 
+//go:embed progress.sql
+var progressSchema string
+
 // Store owns one database handle. Independent handles share database uniqueness
 // constraints; the connection limit is not a distributed ownership mechanism.
 type Store struct{ db *sql.DB }
@@ -60,7 +63,12 @@ func initialize(ctx context.Context, db *sql.DB) error {
 		if _, err := tx.ExecContext(ctx, schema); err != nil {
 			return err
 		}
+		fallthrough
 	case 1:
+		if _, err := tx.ExecContext(ctx, progressSchema); err != nil {
+			return err
+		}
+	case 2:
 	default:
 		return fmt.Errorf("unsupported state schema version %d", version)
 	}

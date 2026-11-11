@@ -4,7 +4,7 @@ package state
 import "errors"
 
 var (
-	ErrConflict = errors.New("operation key is already bound to another intent")
+	ErrConflict = errors.New("operation state conflict")
 	ErrNotFound = errors.New("operation not found")
 )
 
@@ -18,11 +18,36 @@ type Submission struct {
 	Intent         []byte
 }
 
-// Operation is an immutable acceptance record. Acceptance does not authorize
-// execution or report completion; domain state and lifecycle follow separately.
+type OperationStatus string
+
+const (
+	OperationPending   OperationStatus = "pending"
+	OperationRunning   OperationStatus = "running"
+	OperationSucceeded OperationStatus = "succeeded"
+	OperationFailed    OperationStatus = "failed"
+	OperationCanceled  OperationStatus = "canceled"
+)
+
+// Operation snapshots progress while identity and accepted intent stay immutable.
+// Status is a recorded fact, not an execution lease or authorization.
 type Operation struct {
-	ID     string
-	Scope  string
-	Kind   string
-	Intent []byte
+	ID      string
+	Scope   string
+	Kind    string
+	Intent  []byte
+	Status  OperationStatus
+	Version int64
+	Result  []byte
+}
+
+// OperationUpdate records one owner-authorized transition. Its opaque key is
+// scoped to the operation. Result is canonical and nonempty for terminal states,
+// absent for running; payloads contain secret references rather than values.
+type OperationUpdate struct {
+	Scope           string
+	OperationID     string
+	IdempotencyKey  string
+	ExpectedVersion int64
+	Status          OperationStatus
+	Result          []byte
 }

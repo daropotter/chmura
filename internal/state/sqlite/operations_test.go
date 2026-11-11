@@ -232,7 +232,7 @@ func TestOpenRequiresExplicitDiskPathAndPreservesFutureSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if _, err := db.Exec("PRAGMA user_version = 2"); err != nil {
+	if _, err := db.Exec("PRAGMA user_version = 9999"); err != nil {
 		t.Fatal(err)
 	}
 	if store, err := sqlite.Open(ctx, path); err == nil {
@@ -240,7 +240,7 @@ func TestOpenRequiresExplicitDiskPathAndPreservesFutureSchema(t *testing.T) {
 		t.Fatal("future schema was opened")
 	}
 	var version int
-	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 2 {
+	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 9999 {
 		t.Fatalf("future schema was changed: %d %v", version, err)
 	}
 	canceled, cancel := context.WithCancel(ctx)
