@@ -37,6 +37,12 @@ for the settled choices is in the [engineering decisions](decisions.md).
 | PKI / mTLS | stdlib `crypto/x509`, `crypto/tls` | reach for step-ca/cfssl only if hand-rolling gets heavy |
 | Interactivity (optional) | `charmbracelet/gum` (subprocess) | never business logic |
 
+Single-mode operation acceptance now uses SQLite through the pure-Go
+`modernc.org/sqlite` driver, without changing the Go floor or CGO-free releases.
+The [initial state adapter](operation-state.md) owns its small private SQL
+surface; server integration, PostgreSQL/HA and typed query generation remain
+later increments.
+
 See [Manifest validation](manifest-validation.md) for the currently implemented
 schema subset and parser guarantees.
 
