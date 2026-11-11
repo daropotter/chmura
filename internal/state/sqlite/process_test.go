@@ -29,6 +29,33 @@ func processObservation(t *testing.T, store *sqlite.Store, id string) state.Proc
 		StartedAt: time.Date(2026, 11, 11, 12, 0, 0, 123456789, time.FixedZone("offset", 3600))}
 }
 
+func TestGetProcessIsolatesExistingBindingByScopeAndSlot(t *testing.T) {
+	ctx := context.Background()
+	store := openStore(t, filepath.Join(t.TempDir(), "state.db"))
+	request := processObservation(t, store, "generation-a")
+	request.EverReady = true
+	if _, _, err := store.RecordProcess(ctx, request); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := store.GetProcess(ctx, request.Scope, request.SlotID, request.GenerationID)
+	if err != nil || !bytes.Equal(stored.Identity, request.Identity) || !stored.StartedAt.Equal(request.StartedAt) || !stored.EverReady {
+		t.Fatalf("control read did not find the bound process: %#v %v", stored, err)
+	}
+	for _, lookup := range []struct {
+		name, scope, slot string
+	}{
+		{"other scope", "other", request.SlotID},
+		{"other slot", request.Scope, "api/1"},
+	} {
+		t.Run(lookup.name, func(t *testing.T) {
+			got, err := store.GetProcess(ctx, lookup.scope, lookup.slot, request.GenerationID)
+			if !errors.Is(err, state.ErrNotFound) || len(got.Identity) != 0 || !got.StartedAt.IsZero() || got.EverReady || got.GenerationID != "" {
+				t.Fatalf("foreign lookup exposed process facts: %#v %v", got, err)
+			}
+		})
+	}
+}
+
 func TestProcessBindingAndFirstReadinessSurviveReopen(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "state.db")
