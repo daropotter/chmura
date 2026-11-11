@@ -42,6 +42,21 @@ public API is unchanged: HTTPS + JSON + SSE.
 mTLS gives the agent its own identity. WebSocket remains open only for the future
 interactive channel (`app exec`, `port-forward`) — a separate decision.
 
+## Single-mode state: SQLite with a pure-Go driver
+
+The initial durable operation-acceptance adapter uses `database/sql` and
+`modernc.org/sqlite` v1.59.0. Portable records live outside the adapter.
+
+**Why.** SQLite is the planned single-mode store. A pure-Go driver works with
+the existing CGO-free release builds. This version supports Go 1.25; newer
+minor versions require Go 1.26, so adoption does not raise the toolchain floor.
+Database uniqueness provides acceptance idempotency across independent handles.
+
+**Consequences.** The initial private SQL surface and transactional schema
+bootstrap stay small. PostgreSQL/HA and typed query generation remain separate
+work. Durable acceptance alone supplies no execution ownership, generation
+history or completion receipt. See [operation state](operation-state.md).
+
 ## Working method: strict TDD, small steps
 
 Outcome → failing tests → implementation until green → review on the PR → merge →
