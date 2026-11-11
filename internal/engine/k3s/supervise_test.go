@@ -161,13 +161,15 @@ func TestSuperviseHealthyWaitsForFullReadinessAndSurvivesReadinessLoss(t *testin
 	readyStatus.Store(http.StatusServiceUnavailable)
 	checkSupervisionState(t, updates, done, probe.Readiness{EverReady: true})
 	close(failHealthy)
-	if err := <-done; !errors.Is(err, probe.ErrUnhealthy) || errors.Is(err, context.Canceled) {
+	err := <-done
+	var decision *k3s.RestartNeededError
+	if !errors.Is(err, probe.ErrUnhealthy) || errors.Is(err, context.Canceled) || !errors.As(err, &decision) {
 		t.Fatalf("healthy decision lost after readiness loss: %v", err)
 	}
 }
 
 func TestSuperviseRuntimeStopCancelsAndWaitsForActiveProbe(t *testing.T) {
-	for _, mode := range []string{"terminated", "pod replaced", "container replaced", "watch closed", "watch expired", "parent canceled"} {
+	for _, mode := range []string{"terminated", "deleted", "deleting pod", "unknown exit", "pod replaced", "container replaced", "watch closed", "watch expired", "parent canceled"} {
 		t.Run(mode, func(t *testing.T) {
 			pod := supervisedPod()
 			trigger, watchStopped := make(chan struct{}), make(chan struct{})
@@ -181,9 +183,20 @@ func TestSuperviseRuntimeStopCancelsAndWaitsForActiveProbe(t *testing.T) {
 				}
 				changed := pod.DeepCopy()
 				changed.ResourceVersion = "43"
+				kind := "MODIFIED"
 				switch mode {
 				case "terminated":
 					changed.Status.ContainerStatuses[1].State = corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{}}
+				case "deleted":
+					markExited(changed)
+					kind = "DELETED"
+				case "deleting pod":
+					markExited(changed)
+					now := metav1.Now()
+					changed.DeletionTimestamp = &now
+				case "unknown exit":
+					markExited(changed)
+					changed.Status.ContainerStatuses[1].State.Terminated.Reason = "ContainerStatusUnknown"
 				case "pod replaced":
 					changed.UID = "replacement"
 				case "container replaced":
@@ -195,7 +208,7 @@ func TestSuperviseRuntimeStopCancelsAndWaitsForActiveProbe(t *testing.T) {
 					<-r.Context().Done()
 					return
 				}
-				watchEvent(t, w, "MODIFIED", changed)
+				watchEvent(t, w, kind, changed)
 				<-r.Context().Done()
 			})
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -236,6 +249,10 @@ func TestSuperviseRuntimeStopCancelsAndWaitsForActiveProbe(t *testing.T) {
 			}
 			releaseOnce.Do(func() { close(release) })
 			err := <-done
+			var decision *k3s.RestartNeededError
+			if errors.As(err, &decision) {
+				t.Fatalf("uncertain runtime stop became a restart decision: %v", err)
+			}
 			want := k3s.ErrInstanceUnavailable
 			switch mode {
 			case "pod replaced", "container replaced":
@@ -286,6 +303,10 @@ func TestSuperviseUsesPriorFirstReadinessForHealthyAndStartup(t *testing.T) {
 			}
 			if !errors.Is(err, want) || last.Ready || last.EverReady != prior || last.StartupFailed == prior {
 				t.Fatalf("prior=%v state=%#v error=%v", prior, last, err)
+			}
+			var decision *k3s.RestartNeededError
+			if errors.As(err, &decision) != prior {
+				t.Fatalf("prior=%v restart decision=%v", prior, err)
 			}
 			if prior && healthyCalls.Load() != 1 || !prior && healthyCalls.Load() != 0 {
 				t.Fatalf("prior=%v healthy calls=%d", prior, healthyCalls.Load())

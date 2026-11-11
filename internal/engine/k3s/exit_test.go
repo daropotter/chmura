@@ -158,60 +158,77 @@ func TestObserveDistinguishesReportedExitFromDeletionAndChangedStart(t *testing.
 }
 
 func TestSupervisorReportedExitCancelsAndJoinsActiveProbe(t *testing.T) {
-	pod := observedPod()
-	changed := pod.DeepCopy()
-	markExited(changed)
-	changed.ResourceVersion = "43"
-	trigger := make(chan struct{})
-	client := observerClient(t, pod, func(w http.ResponseWriter, r *http.Request) {
-		openWatch(w)
-		select {
-		case <-trigger:
-		case <-r.Context().Done():
-			return
-		}
-		watchEvent(t, w, "MODIFIED", changed)
-		<-r.Context().Done()
-	})
-	started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	var once sync.Once
-	releaseCleanup := func() { once.Do(func() { close(release) }) }
-	defer releaseCleanup()
-	supervisor := k3s.Supervisor{Resolver: k3s.Resolver{Client: client}, Network: probe.Network{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		close(started)
-		<-ctx.Done()
-		close(canceled)
-		<-release
-		return nil, ctx.Err()
-	}}}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	plan := supervisionPlan(8080)
-	plan.Health.StartupTimeout = 0 // Use the normal budget for the minute-old snapshot.
-	done := make(chan error, 1)
-	go func() {
-		done <- supervisor.Monitor(ctx, k3s.SupervisionRequest{Instance: instance(), Plan: plan}, func(probe.Readiness) {})
-	}()
-	select {
-	case <-started:
-	case err := <-done:
-		t.Fatalf("monitor stopped before probe: %v", err)
-	}
-	close(trigger)
-	select {
-	case <-canceled:
-	case err := <-done:
-		t.Fatalf("exit did not cancel probe: %v", err)
-	}
-	select {
-	case err := <-done:
-		t.Fatalf("exit returned before cleanup: %v", err)
-	default:
-	}
-	releaseCleanup()
-	err := <-done
-	var exit *k3s.InstanceExitError
-	if !errors.Is(err, k3s.ErrInstanceExited) || !errors.As(err, &exit) || exit.ExitCode != 17 || errors.Is(err, probe.ErrUnhealthy) || errors.Is(err, context.Canceled) {
-		t.Fatalf("supervisor lost reported-exit cause: %v", err)
+	for _, cancelDuringCleanup := range []bool{false, true} {
+		t.Run(map[bool]string{false: "exit decision", true: "owner canceled during cleanup"}[cancelDuringCleanup], func(t *testing.T) {
+			pod := observedPod()
+			changed := pod.DeepCopy()
+			markExited(changed)
+			changed.ResourceVersion = "43"
+			trigger := make(chan struct{})
+			client := observerClient(t, pod, func(w http.ResponseWriter, r *http.Request) {
+				openWatch(w)
+				select {
+				case <-trigger:
+				case <-r.Context().Done():
+					return
+				}
+				watchEvent(t, w, "MODIFIED", changed)
+				<-r.Context().Done()
+			})
+			started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			var once sync.Once
+			releaseCleanup := func() { once.Do(func() { close(release) }) }
+			defer releaseCleanup()
+			supervisor := k3s.Supervisor{Resolver: k3s.Resolver{Client: client}, Network: probe.Network{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				close(started)
+				<-ctx.Done()
+				close(canceled)
+				<-release
+				return nil, ctx.Err()
+			}}}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			plan := supervisionPlan(8080)
+			plan.Health.StartupTimeout = 0 // Use the normal budget for the minute-old snapshot.
+			done := make(chan error, 1)
+			go func() {
+				done <- supervisor.Monitor(ctx, k3s.SupervisionRequest{Instance: instance(), Plan: plan}, func(probe.Readiness) {})
+			}()
+			select {
+			case <-started:
+			case err := <-done:
+				t.Fatalf("monitor stopped before probe: %v", err)
+			}
+			close(trigger)
+			select {
+			case <-canceled:
+			case err := <-done:
+				t.Fatalf("exit did not cancel probe: %v", err)
+			}
+			select {
+			case err := <-done:
+				t.Fatalf("exit returned before cleanup: %v", err)
+			default:
+			}
+			if cancelDuringCleanup {
+				cancel()
+			}
+			releaseCleanup()
+			err := <-done
+			var exit *k3s.InstanceExitError
+			var decision *k3s.RestartNeededError
+			if cancelDuringCleanup {
+				if !errors.Is(err, context.Canceled) || errors.As(err, &decision) || errors.As(err, &exit) {
+					t.Fatalf("owner stop became a restart decision: %v", err)
+				}
+				return
+			}
+			if !errors.Is(err, k3s.ErrInstanceExited) || !errors.As(err, &exit) || exit.ExitCode != 17 || errors.Is(err, probe.ErrUnhealthy) || errors.Is(err, context.Canceled) {
+				t.Fatalf("supervisor lost reported-exit cause: %v", err)
+			}
+			if !errors.As(err, &decision) {
+				t.Fatalf("exit returned without a restart decision after cleanup: %v", err)
+			}
+		})
 	}
 }

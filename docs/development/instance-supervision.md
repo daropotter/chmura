@@ -24,9 +24,25 @@ is not evidence of an application crash or a failed health check.
 A runtime-reported exit of the selected generation is further distinguished by
 `ErrInstanceExited`/`InstanceExitError`, retaining identity, version and exit
 facts while remaining an unavailable instance for existing callers. Incomplete
-or unknown reports and explicit deletion stay distinct. The supervisor cancels
-and joins checks before forwarding this cause; the owner decides whether an
-authorized restart should follow.
+or unknown reports and explicit deletion stay distinct.
+
+After canceling and joining all checks, the supervisor wraps a reported exit or
+an independent healthy threshold failure in `RestartNeededError`. Its unwrap
+chain preserves the original cause and exit facts. A reported exit, including
+code zero, produces this stay-alive decision even before first readiness or
+without an opt-in healthy rule. Healthy failure requires that rule's own check
+and prior first readiness. Startup timeout remains a failure; observation loss,
+replacement, deletion, generic unavailability and owner cancellation do not
+become restart decisions. Parent stop during cleanup still takes precedence.
+
+The decision retains the exact generation and an independent snapshot of the
+effective portable plan. The owner can call `Request(previous, next)` with the
+original creation request and an explicit successor key/allocation. This
+performs no I/O and validates the observed plan and the restart executor's
+existing constraints. Equivalent omitted defaults are accepted; changing both
+requests to another matching plan is rejected. Constructing a request neither
+authorizes a write nor acquires slot ownership. The owner must drain/stop the
+reporter, authorize and serialize the operation, and persist it before execution.
 
 Readiness callbacks run serially, publish the initial state and changes, and
 must return promptly without outbound I/O. Any current readiness is revoked
@@ -46,7 +62,7 @@ the [readiness writer](probe-execution.md#readiness-publication), keeping API I/
 outside probe callbacks. The owner drains the final local state before stopping
 the reporter. The [restart executor](instance-restart.md) can then reconcile an
 explicitly authorized replacement. Durable history, distributed supervisor
-ownership, automatic restart triggering, agent wiring and API/CLI deployment
+ownership, restart scheduling/reconciliation, agent wiring and API/CLI deployment
 remain separate increments. Tests join real
 typed clients to local HTTP API/watch and application servers; a live k3s
 deployment is not yet verified.

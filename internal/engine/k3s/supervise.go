@@ -33,7 +33,8 @@ type Supervisor struct {
 // onChange runs serially, must return promptly, and must perform no outbound I/O.
 // On stop, any current readiness is revoked locally while EverReady is retained.
 // Errors distinguish health/startup failures, runtime loss/replacement and gaps
-// in observation. This method never reconnects, adopts, restarts or writes status;
+// in observation. A confirmed exit or healthy failure returns RestartNeededError
+// wrapping its cause. This method never reconnects, adopts, restarts or writes status;
 // the owner reconciles those actions and persists generation history separately.
 func (s Supervisor) Monitor(ctx context.Context, request SupervisionRequest, onChange func(probe.Readiness)) error {
 	if err := ctx.Err(); err != nil {
@@ -43,6 +44,7 @@ func (s Supervisor) Monitor(ctx context.Context, request SupervisionRequest, onC
 		return errors.New("instance supervision requires a readiness observer")
 	}
 	config, ports := request.Plan.Health.Effective(), maps.Clone(request.Plan.Ports)
+	request.Plan.Health, request.Plan.Ports = *config, ports
 	if request.Plan.Readiness != deployment.ReadinessChecked || !networkCheck(config.Check, ports) {
 		return ErrUnsupportedPlan
 	}
@@ -123,5 +125,5 @@ func (s Supervisor) Monitor(ctx context.Context, request SupervisionRequest, onC
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return context.Cause(session)
+	return restartDecision(request, last, context.Cause(session))
 }
