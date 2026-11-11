@@ -4,8 +4,8 @@ package state
 import "errors"
 
 var (
-	ErrConflict = errors.New("operation state conflict")
-	ErrNotFound = errors.New("operation not found")
+	ErrConflict = errors.New("state conflict")
+	ErrNotFound = errors.New("state record not found")
 )
 
 // Submission binds an opaque key to a kind and canonical intent within an
