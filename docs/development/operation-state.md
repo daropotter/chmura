@@ -21,6 +21,8 @@ with an immediate write lock and a version check; unsupported versions are
 rejected. Schema version 2 upgrades version-1 acceptance records in the same
 transaction, retaining identity, key bindings and intent and assigning initial
 pending progress. Failure rolls back columns, receipts and schema version.
+Version 3 adds [desired slot generation history](slot-generations.md), retaining
+the existing operation records and receipts.
 One connection per handle bounds local contention; independent handles still
 rely on database constraints, not a process mutex.
 Under a write lock, the driver may spend the busy timeout before returning the
@@ -82,15 +84,15 @@ a newly committed transition, not worker ownership or execution permission.
 
 ## Limits and next increments
 
-Recorded progress/results carry no worker lease, per-slot serialization,
-generation history, revision admission or execution permission. Two different
-keys can still describe
-competing work; domain transactions must arbitrate that before execution.
+Recorded progress/results alone carry no worker lease, revision admission or
+execution permission. The [generation store](slot-generations.md) now serializes
+desired slot admissions and retains their history. It does not fence runtime
+workers; competing work still needs domain authorization before execution.
 The runtime adapters must not be exposed as durable public operations yet.
 
-Next add generation/slot transitions and join the
-[supervisor restart decision](instance-supervision.md) to durable
-authorization and reconciliation. PostgreSQL/HA, typed query generation, server
+Next bind observed runtime facts/history and join the
+[supervisor restart decision](instance-supervision.md) to authorized owner
+reconciliation. PostgreSQL/HA, typed query generation, server
 configuration, agent channel and API/CLI operations follow separately. The few
 SQL statements here are private to the SQLite adapter; portable state records
 contain no SQLite or Kubernetes types.
