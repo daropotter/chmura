@@ -23,6 +23,8 @@ transaction, retaining identity, key bindings and intent and assigning initial
 pending progress. Failure rolls back columns, receipts and schema version.
 Version 3 adds [desired slot generation history](slot-generations.md), retaining
 the existing operation records and receipts.
+Version 4 adds [exact process bindings and first-readiness history](process-history.md)
+without inferring runtime facts for existing generations.
 One connection per handle bounds local contention; independent handles still
 rely on database constraints, not a process mutex.
 Under a write lock, the driver may spend the busy timeout before returning the
@@ -90,7 +92,7 @@ desired slot admissions and retains their history. It does not fence runtime
 workers; competing work still needs domain authorization before execution.
 The runtime adapters must not be exposed as durable public operations yet.
 
-Next bind observed runtime facts/history and join the
+Next retain terminal runtime causes and join the
 [supervisor restart decision](instance-supervision.md) to authorized owner
 reconciliation. PostgreSQL/HA, typed query generation, server
 configuration, agent channel and API/CLI operations follow separately. The few
