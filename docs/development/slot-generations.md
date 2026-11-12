@@ -51,10 +51,11 @@ versioning serializes desired admissions; it does not fence concurrent workers
 or authorize the runtime executor. A returned snapshot can become stale after
 the transaction, so callers must not treat it as a lease.
 
-Next bind each desired generation to exact observed runtime facts and retained
-first readiness, then join supervisor decisions to authorized restart
-reconciliation. The owner still needs execution ownership/fencing and operation
-retirement rules. Server/agent/API/CLI integration remains separate work.
+[Retained process history](process-history.md) now binds immutable process facts
+and sticky first readiness separately from desired intent. Next retain terminal
+causes and join supervisor decisions to authorized restart reconciliation. The
+owner still needs execution ownership/fencing and operation retirement rules.
+Server/agent/API/CLI integration remains separate work.
 
 Tests use temporary disk databases and independent handles. They cover competing
 slot updates, identical retries, stale/rebound requests, immutable history and
