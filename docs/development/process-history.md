@@ -99,6 +99,42 @@ Schema version 5 adds terminal history without synthesizing failures for older
 bindings. Migration retains existing process identities, readiness receipts and
 operation results; the entire migration chain rolls back on failure.
 
+## Resuming k3s supervision
+
+`k3s.Supervisor.Resume` reads the current desired head and its retained process
+before contacting the runtime. The owner supplies an explicit scope, slot,
+generation, exact private instance and validated plan authorized for that desired
+intent. Resume does not decode/validate the plan against opaque generation
+intent, discover a container identity or adopt another process. A missing binding
+requires explicit owner reconciliation; it never falls back to `EverReady=false`.
+
+`EncodeProcessIdentity` supplies the stable version-1 canonical private k3s
+reference for new bindings: engine discriminator and complete namespace, pod
+name/UID and container name/ID. Mutable IP, resource version and readiness are
+excluded; actual start time remains a separate immutable binding fact. A frozen
+identity fixture protects compatibility with existing bytes. Incomplete or
+invalid UTF-8 references are rejected instead of producing ambiguous identities.
+Other or future encodings require explicit reconciliation, never implicit adoption.
+
+Resume rejects superseded generations, terminal history and identity mismatches
+with `state.ErrConflict`, before runtime I/O. Missing scope/slot/process records
+and storage errors retain their causes. Deployment-operation completion does not
+stop ongoing supervision. The runtime snapshot must also match retained start
+time before any probes run. A changed start becomes `ErrObservationLost`, including
+when the first snapshot already reports an exit; it is never restart evidence.
+A matching reported exit still returns the existing typed restart handoff.
+
+When retained `EverReady` is true, startup timeout stays disabled and independent
+healthy checks are activated. Current readiness starts false and must earn the
+full fresh success threshold. Resume inherits Monitor's cancellation, final readiness
+revocation and joined watch/probe cleanup. It records no new history or status.
+
+These are snapshot checks, not atomic ownership acquisition or fencing. The owner
+must serialize admissions/terminal decisions with monitor startup/shutdown, keep
+one authorized owner and stop an obsolete monitor. Resume does not poll desired
+state during monitoring or deduplicate concurrent callers. Durable reporting and
+restart execution remain separate owner work.
+
 ## Integration boundary
 
 Run persistence in an owner/reporting worker outside probe callbacks; those
@@ -108,9 +144,9 @@ This library acquires no execution ownership, fences no old workers, publishes
 no routing readiness and executes no restart. A terminal snapshot is retained
 history and can become stale with respect to the current desired head.
 
-Next connect this history to the supervisor owner's authorization/reconciliation
-path, including concrete private engine identity/evidence encoding and durable
-reporter acknowledgement. Agent/channel and API/CLI integration remain
-separate work. Tests use real temporary databases, virtual-time readiness,
+The recovery read path now joins retained history to k3s supervision. Next add
+owner persistence/reporting with explicit acknowledgement and terminal evidence
+encoding, then authorized restart reconciliation. Agent/channel and API/CLI
+integration remain separate work. Tests use real temporary databases, virtual-time readiness,
 independent handles and fault injection; no live cluster or production database
 is accessed.

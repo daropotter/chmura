@@ -5,6 +5,7 @@ import (
 	"errors"
 	"maps"
 	"sync"
+	"time"
 
 	"github.com/daropotter/chmura/internal/deployment"
 	"github.com/daropotter/chmura/internal/manifest"
@@ -36,7 +37,12 @@ type Supervisor struct {
 // in observation. A confirmed exit or healthy failure returns RestartNeededError
 // wrapping its cause. This method never reconnects, adopts, restarts or writes status;
 // the owner reconciles those actions and persists generation history separately.
+// Use Resume when recovering a generation with retained process history.
 func (s Supervisor) Monitor(ctx context.Context, request SupervisionRequest, onChange func(probe.Readiness)) error {
+	return s.monitor(ctx, request, onChange, time.Time{})
+}
+
+func (s Supervisor) monitor(ctx context.Context, request SupervisionRequest, onChange func(probe.Readiness), expectedStart time.Time) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -84,7 +90,9 @@ func (s Supervisor) Monitor(ctx context.Context, request SupervisionRequest, onC
 	select {
 	case <-session.Done():
 	case target := <-targets:
-		if session.Err() == nil {
+		if !expectedStart.IsZero() && !target.ProcessStartedAt.Equal(expectedStart) {
+			stop(observationFailure(ctx, errors.New("observed process start differs from retained history")))
+		} else if session.Err() == nil {
 			firstReady := make(chan struct{})
 			attempt := func(ctx context.Context, check manifest.Probe) error {
 				return s.Network.Run(ctx, target.Network, check)
@@ -125,5 +133,10 @@ func (s Supervisor) Monitor(ctx context.Context, request SupervisionRequest, onC
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return restartDecision(request, last, context.Cause(session))
+	cause := context.Cause(session)
+	var exit *InstanceExitError
+	if !expectedStart.IsZero() && errors.As(cause, &exit) && !exit.StartedAt.Equal(expectedStart) {
+		return observationFailure(ctx, errors.New("exited process start differs from retained history"))
+	}
+	return restartDecision(request, last, cause)
 }
