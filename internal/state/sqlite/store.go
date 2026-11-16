@@ -25,6 +25,9 @@ var generationSchema string
 //go:embed process.sql
 var processSchema string
 
+//go:embed terminal.sql
+var terminalSchema string
+
 // Store owns one database handle. Independent handles share database uniqueness
 // constraints; the connection limit is not a distributed ownership mechanism.
 type Store struct{ db *sql.DB }
@@ -84,7 +87,12 @@ func initialize(ctx context.Context, db *sql.DB) error {
 		if _, err := tx.ExecContext(ctx, processSchema); err != nil {
 			return err
 		}
+		fallthrough
 	case 4:
+		if _, err := tx.ExecContext(ctx, terminalSchema); err != nil {
+			return err
+		}
+	case 5:
 	default:
 		return fmt.Errorf("unsupported state schema version %d", version)
 	}
