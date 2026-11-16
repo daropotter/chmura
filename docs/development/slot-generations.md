@@ -52,8 +52,8 @@ or authorize the runtime executor. A returned snapshot can become stale after
 the transaction, so callers must not treat it as a lease.
 
 [Retained process history](process-history.md) now binds immutable process facts
-and sticky first readiness separately from desired intent. Next retain terminal
-causes and join supervisor decisions to authorized restart reconciliation. The
+and sticky first readiness and terminal causes separately from desired intent.
+Next join supervisor decisions to authorized restart reconciliation. The
 owner still needs execution ownership/fencing and operation retirement rules.
 Server/agent/API/CLI integration remains separate work.
 

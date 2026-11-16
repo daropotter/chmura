@@ -18,8 +18,10 @@ import (
 // first readiness. The boolean means a new observation receipt was committed,
 // even when its facts were already known. Matching retries return stored facts.
 // Fresh writes require the current desired generation; historical replays grant
-// no right to resume a superseded process. A canceled/lost response may follow
-// commit; repeat the same request to recover. Call outside probe callbacks.
+// no right to resume a superseded or terminal process. A terminal decision
+// rejects fresh observations; old receipts return the terminal snapshot.
+// A canceled/lost response may follow commit; repeat the same request to recover.
+// Call outside probe callbacks.
 func (s *Store) RecordProcess(ctx context.Context, request state.ProcessObservation) (state.Process, bool, error) {
 	process, recorded, err := s.recordProcess(ctx, request)
 	if err != nil && ctx.Err() != nil {
@@ -70,6 +72,9 @@ func (s *Store) recordProcess(ctx context.Context, request state.ProcessObservat
 		if !errors.Is(err, sql.ErrNoRows) {
 			return state.Process{}, false, fmt.Errorf("read process receipt: %w", err)
 		}
+		if process.Terminal != nil {
+			return state.Process{}, false, state.ErrConflict
+		}
 	}
 	var exists int
 	err = tx.QueryRowContext(ctx, `SELECT 1 FROM generations WHERE scope = ? AND slot_id = ? AND id = ?`, request.Scope, request.SlotID, request.GenerationID).Scan(&exists)
@@ -88,20 +93,28 @@ func (s *Store) recordProcess(ctx context.Context, request state.ProcessObservat
 	}
 	if !bound {
 		identityHash := sha256.Sum256(request.Identity)
-		process, err = scanProcess(tx.QueryRowContext(ctx, `INSERT INTO generation_processes (scope, slot_id, generation_id, identity, identity_hash, started_at, ever_ready)
-			VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING `+processColumns,
-			request.Scope, request.SlotID, request.GenerationID, request.Identity, hex.EncodeToString(identityHash[:]), string(started), request.EverReady))
-		if errors.Is(err, sql.ErrNoRows) {
-			return state.Process{}, false, state.ErrConflict
-		}
+		result, err := tx.ExecContext(ctx, `INSERT INTO generation_processes (scope, slot_id, generation_id, identity, identity_hash, started_at, ever_ready)
+			VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
+			request.Scope, request.SlotID, request.GenerationID, request.Identity, hex.EncodeToString(identityHash[:]), string(started), request.EverReady)
 		if err != nil {
 			return state.Process{}, false, fmt.Errorf("bind generation process: %w", err)
 		}
+		count, err := result.RowsAffected()
+		if err != nil {
+			return state.Process{}, false, fmt.Errorf("confirm process binding: %w", err)
+		}
+		if count != 1 {
+			return state.Process{}, false, state.ErrConflict
+		}
 	} else if request.EverReady && !process.EverReady {
-		process, err = scanProcess(tx.QueryRowContext(ctx, `UPDATE generation_processes SET ever_ready = 1 WHERE scope = ? AND slot_id = ? AND generation_id = ? RETURNING `+processColumns, request.Scope, request.SlotID, request.GenerationID))
+		_, err = tx.ExecContext(ctx, `UPDATE generation_processes SET ever_ready = 1 WHERE scope = ? AND slot_id = ? AND generation_id = ?`, request.Scope, request.SlotID, request.GenerationID)
 		if err != nil {
 			return state.Process{}, false, fmt.Errorf("retain first readiness: %w", err)
 		}
+	}
+	process, err = scanProcess(tx.QueryRowContext(ctx, selectProcess, request.Scope, request.SlotID, request.GenerationID))
+	if err != nil {
+		return state.Process{}, false, fmt.Errorf("read retained process facts: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO process_observations (scope, slot_id, generation_id, key_hash, ever_ready) VALUES (?, ?, ?, ?, ?)`, request.Scope, request.SlotID, request.GenerationID, keyHash, request.EverReady); err != nil {
 		return state.Process{}, false, fmt.Errorf("record process receipt: %w", err)
@@ -112,7 +125,8 @@ func (s *Store) recordProcess(ctx context.Context, request state.ProcessObservat
 	return process, true, nil
 }
 
-// GetProcess reads retained facts for the exact generation in an authorized scope.
+// GetProcess reads binding, readiness and terminal history in one snapshot for
+// the exact generation in an authorized scope.
 // No row means unbound/missing, never assumed current readiness or failed startup.
 func (s *Store) GetProcess(ctx context.Context, scope, slot, generation string) (state.Process, error) {
 	process, err := scanProcess(s.db.QueryRowContext(ctx, selectProcess, scope, slot, generation))
@@ -125,16 +139,30 @@ func (s *Store) GetProcess(ctx context.Context, scope, slot, generation string) 
 	return process, nil
 }
 
-const processColumns = "scope, slot_id, generation_id, identity, started_at, ever_ready"
-const selectProcess = `SELECT ` + processColumns + ` FROM generation_processes WHERE scope = ? AND slot_id = ? AND generation_id = ?`
+const selectProcess = `SELECT p.scope, p.slot_id, p.generation_id, p.identity, p.started_at, p.ever_ready,
+	t.cause, t.occurred_at, t.evidence FROM generation_processes p LEFT JOIN process_terminals t
+	ON t.scope = p.scope AND t.slot_id = p.slot_id AND t.generation_id = p.generation_id
+	WHERE p.scope = ? AND p.slot_id = ? AND p.generation_id = ?`
 
 func scanProcess(row *sql.Row) (state.Process, error) {
 	var process state.Process
 	var started string
-	if err := row.Scan(&process.Scope, &process.SlotID, &process.GenerationID, &process.Identity, &started, &process.EverReady); err != nil {
+	var cause, occurred sql.NullString
+	var evidence []byte
+	if err := row.Scan(&process.Scope, &process.SlotID, &process.GenerationID, &process.Identity, &started, &process.EverReady, &cause, &occurred, &evidence); err != nil {
 		return state.Process{}, err
 	}
 	var err error
 	process.StartedAt, err = time.Parse(time.RFC3339Nano, started)
+	if err != nil {
+		return state.Process{}, err
+	}
+	if cause.Valid {
+		at, err := time.Parse(time.RFC3339Nano, occurred.String)
+		if err != nil {
+			return state.Process{}, err
+		}
+		process.Terminal = &state.ProcessTerminal{Cause: state.ProcessTerminalCause(cause.String), OccurredAt: at, Evidence: evidence}
+	}
 	return process, err
 }
