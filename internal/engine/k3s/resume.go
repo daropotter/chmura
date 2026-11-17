@@ -70,32 +70,46 @@ func (s Supervisor) Resume(ctx context.Context, history SupervisionHistory, requ
 	if history == nil || onChange == nil || strings.TrimSpace(request.Scope) == "" || strings.TrimSpace(request.SlotID) == "" || strings.TrimSpace(request.GenerationID) == "" {
 		return errors.New("supervision resume requires history, scope, slot, generation and an observer")
 	}
-	identity, err := EncodeProcessIdentity(request.Instance)
+	retained, err := retainedSupervisionProcess(ctx, history, request)
 	if err != nil {
 		return err
 	}
+	return s.monitor(ctx, SupervisionRequest{Instance: request.Instance, Plan: request.Plan, EverReady: retained.EverReady}, onChange, retained.StartedAt)
+}
+
+func retainedSupervisionProcess(ctx context.Context, history SupervisionHistory, request ResumeRequest) (state.Process, error) {
+	if err := ctx.Err(); err != nil {
+		return state.Process{}, err
+	}
+	if history == nil || strings.TrimSpace(request.Scope) == "" || strings.TrimSpace(request.SlotID) == "" || strings.TrimSpace(request.GenerationID) == "" {
+		return state.Process{}, errors.New("supervision history requires scope, slot and generation")
+	}
+	identity, err := EncodeProcessIdentity(request.Instance)
+	if err != nil {
+		return state.Process{}, err
+	}
 	head, err := history.CurrentGeneration(ctx, request.Scope, request.SlotID)
 	if cause := ctx.Err(); cause != nil {
-		return cause
+		return state.Process{}, cause
 	}
 	if err != nil {
-		return fmt.Errorf("read supervision slot head: %w", err)
+		return state.Process{}, fmt.Errorf("read supervision slot head: %w", err)
 	}
 	if head.Scope != request.Scope || head.SlotID != request.SlotID || head.ID != request.GenerationID || head.Version <= 0 {
-		return fmt.Errorf("%w: selected supervision generation is not current", state.ErrConflict)
+		return state.Process{}, fmt.Errorf("%w: selected supervision generation is not current", state.ErrConflict)
 	}
 	retained, err := history.GetProcess(ctx, request.Scope, request.SlotID, request.GenerationID)
 	if cause := ctx.Err(); cause != nil {
-		return cause
+		return state.Process{}, cause
 	}
 	if err != nil {
-		return fmt.Errorf("read supervision process history: %w", err)
+		return state.Process{}, fmt.Errorf("read supervision process history: %w", err)
 	}
 	if retained.Scope != request.Scope || retained.SlotID != request.SlotID || retained.GenerationID != request.GenerationID || retained.StartedAt.IsZero() || !bytes.Equal(retained.Identity, identity) {
-		return fmt.Errorf("%w: retained process does not match supervision selection", state.ErrConflict)
+		return state.Process{}, fmt.Errorf("%w: retained process does not match supervision selection", state.ErrConflict)
 	}
 	if retained.Terminal != nil {
-		return fmt.Errorf("%w: process supervision is terminal", state.ErrConflict)
+		return state.Process{}, fmt.Errorf("%w: process supervision is terminal", state.ErrConflict)
 	}
-	return s.monitor(ctx, SupervisionRequest{Instance: request.Instance, Plan: request.Plan, EverReady: retained.EverReady}, onChange, retained.StartedAt)
+	return retained, nil
 }
