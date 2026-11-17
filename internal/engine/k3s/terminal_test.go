@@ -174,8 +174,12 @@ func TestPrepareProcessTerminalRetainsIndependentHealthyDecision(t *testing.T) {
 			Digest   string             `json:"check-sha256"`
 		} `json:"unhealthy"`
 	}
-	if err := json.Unmarshal(prepared.Terminal.Evidence, &facts); err != nil || facts.Healthy.Failures != 1 || len(facts.Healthy.Digest) != 64 || strings.Contains(string(prepared.Terminal.Evidence), "private-config") {
-		t.Fatalf("healthy evidence lost threshold or retained raw check: %s %v", prepared.Terminal.Evidence, err)
+	// Pin the independent healthy check's canonical input, including defaults.
+	// The fixture uses a different path and interval for readiness.
+	const healthyCheck = `{"expect-status":[200],"interval-ns":5000000000,"kind":"http","path":"/healthy?private-config=do-not-retain","port-name":"web","port-number":%d,"protocol":"http","timeout-ns":2000000000}`
+	expectedDigest := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf(healthyCheck, request.Plan.Ports["web"].Number))))
+	if err := json.Unmarshal(prepared.Terminal.Evidence, &facts); err != nil || facts.Healthy.Failures != 1 || facts.Healthy.Digest != expectedDigest || strings.Contains(string(prepared.Terminal.Evidence), "private-config") {
+		t.Fatalf("healthy evidence lost threshold, hashed the wrong check or retained raw configuration: %s %v", prepared.Terminal.Evidence, err)
 	}
 	if _, _, err := store.RecordProcessTerminal(context.Background(), prepared); err != nil {
 		t.Fatal(err)
