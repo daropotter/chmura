@@ -135,18 +135,63 @@ one authorized owner and stop an obsolete monitor. Resume does not poll desired
 state during monitoring or deduplicate concurrent callers. Durable reporting and
 restart execution remain separate owner work.
 
+## Acknowledging first-readiness persistence
+
+`supervision.ProcessReporter` runs process binding and first-readiness writes in
+an owner worker. `NewProcessReporter` freezes an explicit authorized observation
+and positive write-attempt/retry bounds; construction performs no I/O. The owner
+validates identity/start and any initial `EverReady=true` evidence. The initial
+binding is always written before a subsequent first-ready receipt, even if the
+callback observes readiness before `Run` starts.
+
+`Observe` is suitable for the supervisor callback: it retains only monotonic
+`EverReady` in bounded memory and performs no I/O or write wait. Repeated values
+or later false observations enqueue no extra facts. Current `Ready` and
+`StartupFailed` flags do not invent readiness history or terminal evidence.
+
+`Flush` waits for acceptance of the initial binding and all facts observed at its
+entry. A nil result requires successful storage acceptance or exact receipt
+replay. Until then, queued facts may be lost on owner failure; they cannot
+authorize a later action. A bounded flush context can expire while `Run` remains
+alive. The error retains both context classification and the last storage failure
+when available, so a persistent write problem remains diagnosable.
+
+The worker runs once. Attempt deadlines and retry pauses are explicit; SQLite's
+existing busy-wait cancellation latency still applies. Each fact has a separate
+stable key derived from the hashed session key, and every ambiguous retry keeps
+the exact payload/key. Recovery must repeat the initial observation and session
+key. A lost/canceled response may follow commit. Conflict/not-found errors and
+terminal snapshots stop the worker and wake pending flushes; other write errors
+retry until cancellation. Historical receipt acknowledgement grants no execution
+permission for an obsolete generation.
+
+The owner must keep persistence alive independently of monitor cancellation:
+
+1. Stop/join the supervisor and its callbacks.
+2. Call `Flush` with a bounded context while the history worker is still running.
+3. Cancel/join the history worker; stop/drain runtime readiness publication too.
+4. Record the verified terminal cause with its own stable key, then reconcile any
+   restart only under explicit owner authorization.
+
+An unacknowledged flush requires reconciliation, not continuation as if history
+were durable. The reporter neither classifies terminal causes nor writes routing
+readiness; it acquires no ownership/fencing and performs no restart. The owner
+still controls worker lifetimes, failure handling and serialization. Integration
+tests exercise resume → first readiness → exit → flush → stop/join → terminal
+record against temporary SQLite and a local typed runtime API.
+
 ## Integration boundary
 
-Run persistence in an owner/reporting worker outside probe callbacks; those
-callbacks must remain prompt and perform no blocking I/O. Queueing, draining,
-failure handling and acknowledgement policy still belong to owner integration.
+ProcessReporter supplies bounded first-readiness queueing and acknowledgement
+outside probe callbacks. Lifecycle orchestration, durable terminal evidence and
+failure/reconciliation policy still belong to owner integration.
 This library acquires no execution ownership, fences no old workers, publishes
 no routing readiness and executes no restart. A terminal snapshot is retained
 history and can become stale with respect to the current desired head.
 
-The recovery read path now joins retained history to k3s supervision. Next add
-owner persistence/reporting with explicit acknowledgement and terminal evidence
-encoding, then authorized restart reconciliation. Agent/channel and API/CLI
-integration remain separate work. Tests use real temporary databases, virtual-time readiness,
-independent handles and fault injection; no live cluster or production database
-is accessed.
+The recovery read path joins retained history to k3s supervision, and the new
+worker acknowledges first-readiness persistence. Next add verified terminal
+evidence encoding and owner orchestration, then authorized restart reconciliation.
+Agent/channel and API/CLI integration remain separate work. Tests use real
+temporary databases, virtual-time readiness, independent handles and fault
+injection; no live cluster or production database is accessed.

@@ -294,24 +294,40 @@ func TestRetireGenerationPreservesConcurrentReplacementAndVersionConflict(t *tes
 }
 
 func TestRetireGenerationLostResponseAndCancellationAreReplayable(t *testing.T) {
-	for _, mode := range []string{"lost response", "cancellation"} {
+	for _, mode := range []string{"lost response", "lost response completed before wait", "cancellation"} {
 		t.Run(mode, func(t *testing.T) {
 			accepted := make(chan struct{})
-			s := &lifetimeStore{dropReply: mode == "lost response", holdReply: mode == "cancellation", accepted: accepted}
+			s := &lifetimeStore{dropReply: mode != "cancellation", holdReply: mode == "cancellation", accepted: accepted}
 			client, request, ref := lifetimeClient(t, s)
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
 			done := make(chan error, 1)
-			go func() { _, err := (k3s.Retirer{Client: client}).Ensure(ctx, request, ref); done <- err }()
+			completed := make(chan struct{})
+			go func() {
+				_, err := (k3s.Retirer{Client: client}).Ensure(ctx, request, ref)
+				done <- err
+				close(completed)
+			}()
+			if mode == "lost response completed before wait" {
+				// Acceptance and the lost reply are both observable before select.
+				<-completed
+			}
+			var err error
 			select {
 			case <-accepted:
-			case err := <-done:
-				t.Fatalf("retirement stopped before acceptance: %v", err)
+				if mode == "cancellation" {
+					cancel()
+				}
+				err = <-done
+			case err = <-done:
+				// A completed reply does not imply that acceptance is missing:
+				// select may choose either channel when both are ready.
+				select {
+				case <-accepted:
+				default:
+					t.Fatalf("retirement stopped before acceptance: %v", err)
+				}
 			}
-			if mode == "cancellation" {
-				cancel()
-			}
-			err := <-done
 			if mode == "cancellation" && !errors.Is(err, context.Canceled) {
 				t.Fatalf("lost cancellation cause: %v", err)
 			}
