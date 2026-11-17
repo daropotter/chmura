@@ -150,14 +150,18 @@ func (r *ReadinessReporter) Run(ctx context.Context) (err error) {
 		}
 		var outcome error
 		if pending == nil {
-			var target Target
-			target, outcome = (Resolver{Client: r.client}).Resolve(attempt, r.ref, nil)
-			if outcome == nil && target.ResourceVersion == "" {
+			pod, err := (Resolver{Client: r.client}).readPod(attempt, r.ref)
+			outcome = err
+			var version string
+			if outcome == nil {
+				version, outcome = readinessResourceVersion(pod, r.ref, ready)
+			}
+			if outcome == nil && version == "" {
 				outcome = fmt.Errorf("%w: runtime snapshot has no resource version", ErrObservationLost)
 			}
 			if outcome == nil {
 				nonce++
-				pending = &ReadinessUpdate{Instance: r.ref, ResourceVersion: target.ResourceVersion, IdempotencyKey: fmt.Sprintf("readiness/%s/%d/%d", r.session, sequence, nonce), Ready: ready}
+				pending = &ReadinessUpdate{Instance: r.ref, ResourceVersion: version, IdempotencyKey: fmt.Sprintf("readiness/%s/%d/%d", r.session, sequence, nonce), Ready: ready}
 				pendingSequence = sequence
 			}
 		}

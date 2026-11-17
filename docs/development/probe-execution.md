@@ -191,8 +191,13 @@ control-plane API.
 condition through an explicitly configured client. It requires a complete
 container generation, an observed resource version and an idempotency key.
 `Resolver.Resolve` and the initial `Observe` target expose their snapshot version.
-Only a running Chmura-owned Pod with the declared gate can be changed. Pod or
-container replacement, termination and foreign ownership fail before mutation.
+Marking ready requires a running Chmura-owned Pod with the declared gate.
+Marking unready also accepts a confirmed exit of the exact selected process,
+with complete matching container ID and start/finish evidence, including exit
+code zero. This permits final revocation without a live probe IP. Pod/container
+replacement, deletion, incomplete/unknown exit reports and foreign ownership
+still fail before mutation. This exception neither creates a live probe target
+nor grants restart permission.
 
 The writer updates only its condition through the status subresource. Native
 readiness, container status, other conditions and workload configuration remain

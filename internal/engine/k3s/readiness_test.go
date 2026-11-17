@@ -375,3 +375,114 @@ func TestResolveTargetIncludesReadinessBaseVersion(t *testing.T) {
 		t.Fatalf("readiness base version=%q error=%v", target.ResourceVersion, err)
 	}
 }
+
+func TestReadinessWriterRevokesConfirmedExitedProcess(t *testing.T) {
+	for _, phase := range []corev1.PodPhase{corev1.PodRunning, corev1.PodFailed, corev1.PodSucceeded} {
+		t.Run(string(phase), func(t *testing.T) {
+			s := &gateStore{}
+			client := gateClient(t, s)
+			writer := k3s.ReadinessWriter{Client: client}
+			request := readinessRequest()
+			request.Ready = true
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			if _, err := writer.Apply(ctx, request); err != nil {
+				t.Fatal(err)
+			}
+			s.mu.Lock()
+			markExited(s.pod)
+			s.pod.Status.Phase, s.pod.Status.PodIP = phase, ""
+			if phase == corev1.PodSucceeded {
+				s.pod.Status.ContainerStatuses[1].State.Terminated.ExitCode = 0
+				s.pod.Status.ContainerStatuses[1].State.Terminated.Reason = "Completed"
+			}
+			s.pod.ResourceVersion, s.dropReply = "exit-snapshot", true
+			s.mu.Unlock()
+			before, _, _ := s.snapshot()
+			if _, err := (k3s.Resolver{Client: client}).Resolve(ctx, instance(), nil); !errors.Is(err, k3s.ErrInstanceExited) {
+				t.Fatalf("exit became a live probe target: %v", err)
+			}
+			request.ResourceVersion, request.IdempotencyKey, request.Ready = before.ResourceVersion, "revoke-after-exit", false
+			_, _ = writer.Apply(ctx, request) // Acceptance can precede a lost reply.
+			version, err := writer.Apply(ctx, request)
+			if err != nil || version == "" {
+				t.Fatalf("confirmed exit blocked readiness revocation/replay: %v", err)
+			}
+			after, writes, _ := s.snapshot()
+			if writes != 2 || gateCondition(t, after).Status != corev1.ConditionFalse {
+				t.Fatalf("exit gate was not revoked exactly once: writes=%d state=%#v", writes, gateCondition(t, after))
+			}
+			if !reflect.DeepEqual(before.Spec, after.Spec) || !reflect.DeepEqual(before.Status.ContainerStatuses, after.Status.ContainerStatuses) || before.Status.Conditions[0] != after.Status.Conditions[0] || before.Status.Phase != after.Status.Phase {
+				t.Fatal("exit revocation changed native status or configuration")
+			}
+			s.mu.Lock()
+			s.pod.ResourceVersion = "later-kubelet-update"
+			s.mu.Unlock()
+			if version, err := writer.Apply(ctx, request); err != nil || version != "later-kubelet-update" {
+				t.Fatalf("exit receipt lost replay after unrelated update: version=%s %v", version, err)
+			}
+			request.ResourceVersion, request.IdempotencyKey, request.Ready = "later-kubelet-update", "cannot-ready-an-exit", true
+			if _, err := writer.Apply(ctx, request); !errors.Is(err, k3s.ErrInstanceExited) {
+				t.Fatalf("exited process was made ready: %v", err)
+			}
+			_, writes, _ = s.snapshot()
+			if writes != 2 {
+				t.Fatal("replay or ready=true changed exited process")
+			}
+		})
+	}
+}
+
+func TestReadinessWriterRejectsUnsafeExitRevocation(t *testing.T) {
+	for _, mode := range []string{"missing start", "missing finish", "reversed finish", "unknown exit", "wrong terminated ID", "missing container ID", "container replaced", "pod replaced", "terminating", "foreign owner", "missing gate", "duplicate conditions", "unknown phase", "ambiguous running state", "missing version"} {
+		t.Run(mode, func(t *testing.T) {
+			s := &gateStore{}
+			writer := k3s.ReadinessWriter{Client: gateClient(t, s)}
+			s.mu.Lock()
+			markExited(s.pod)
+			status := &s.pod.Status.ContainerStatuses[1]
+			switch mode {
+			case "missing start":
+				status.State.Terminated.StartedAt = metav1.Time{}
+			case "missing finish":
+				status.State.Terminated.FinishedAt = metav1.Time{}
+			case "reversed finish":
+				status.State.Terminated.FinishedAt = metav1.NewTime(status.State.Terminated.StartedAt.Add(-time.Second))
+			case "unknown exit":
+				status.State.Terminated.Reason = "ContainerStatusUnknown"
+			case "wrong terminated ID":
+				status.State.Terminated.ContainerID = "other"
+			case "missing container ID":
+				status.ContainerID = ""
+			case "container replaced":
+				status.ContainerID = "replacement"
+			case "pod replaced":
+				s.pod.UID = "replacement"
+			case "terminating":
+				now := metav1.Now()
+				s.pod.DeletionTimestamp = &now
+			case "foreign owner":
+				s.pod.Labels["app.kubernetes.io/managed-by"] = "other"
+			case "missing gate":
+				s.pod.Spec.ReadinessGates = nil
+			case "duplicate conditions":
+				s.pod.Status.Conditions = append(s.pod.Status.Conditions, corev1.PodCondition{Type: k3s.ReadinessGate}, corev1.PodCondition{Type: k3s.ReadinessGate})
+			case "unknown phase":
+				s.pod.Status.Phase = corev1.PodUnknown
+			case "ambiguous running state":
+				status.State.Running = &corev1.ContainerStateRunning{StartedAt: status.State.Terminated.StartedAt}
+			case "missing version":
+				s.pod.ResourceVersion = ""
+			}
+			s.mu.Unlock()
+			before, _, _ := s.snapshot()
+			if _, err := writer.Apply(context.Background(), readinessRequest()); err == nil {
+				t.Fatal("unsafe exit revocation accepted")
+			}
+			after, writes, _ := s.snapshot()
+			if writes != 0 || !reflect.DeepEqual(before, after) {
+				t.Fatal("unsafe exit revocation changed the resource")
+			}
+		})
+	}
+}

@@ -88,6 +88,38 @@ func TestReporterCoalescesBeforeRunAndFlushesAcceptedState(t *testing.T) {
 	}
 }
 
+func TestReporterRevokesConfirmedExitedProcess(t *testing.T) {
+	for _, mode := range []string{"exit", "lost response", "version conflict"} {
+		t.Run(mode, func(t *testing.T) {
+			s := &gateStore{}
+			r := reporterFor(t, s, reportingOptions())
+			r.Observe(probe.Readiness{Ready: true, EverReady: true})
+			ctx := startReporter(t, r)
+			if err := r.Flush(ctx); err != nil {
+				t.Fatal(err)
+			}
+			s.mu.Lock()
+			markExited(s.pod)
+			s.pod.Status.Phase, s.pod.Status.PodIP = corev1.PodFailed, ""
+			s.pod.ResourceVersion = "exit-snapshot"
+			if mode == "lost response" {
+				s.dropReply = true
+			} else if mode == "version conflict" {
+				s.interfere = func(*corev1.Pod) {}
+			}
+			s.mu.Unlock()
+			r.Observe(probe.Readiness{EverReady: true})
+			if err := r.Flush(ctx); err != nil {
+				t.Fatalf("final unready result was not acknowledged after exit: %v", err)
+			}
+			pod, writes, _ := s.snapshot()
+			if writes != 2 || gateCondition(t, pod).Status != corev1.ConditionFalse || pod.Status.ContainerStatuses[1].State.Terminated == nil {
+				t.Fatalf("reporter did not revoke only the exit gate: writes=%d state=%#v", writes, pod.Status)
+			}
+		})
+	}
+}
+
 func TestReporterObserverDoesNotWaitForBlockedAPI(t *testing.T) {
 	entered, canceled := make(chan struct{}), make(chan struct{})
 	var puts atomic.Int32
