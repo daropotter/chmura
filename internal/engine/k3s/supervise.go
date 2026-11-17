@@ -87,9 +87,11 @@ func (s Supervisor) monitor(ctx context.Context, request SupervisionRequest, onC
 		stop(err)
 	}()
 	var last probe.Readiness // Written by the readiness worker; read only after Wait.
+	var startedAt time.Time
 	select {
 	case <-session.Done():
 	case target := <-targets:
+		startedAt = target.ProcessStartedAt
 		if !expectedStart.IsZero() && !target.ProcessStartedAt.Equal(expectedStart) {
 			stop(observationFailure(ctx, errors.New("observed process start differs from retained history")))
 		} else if session.Err() == nil {
@@ -138,5 +140,5 @@ func (s Supervisor) monitor(ctx context.Context, request SupervisionRequest, onC
 	if !expectedStart.IsZero() && errors.As(cause, &exit) && !exit.StartedAt.Equal(expectedStart) {
 		return observationFailure(ctx, errors.New("exited process start differs from retained history"))
 	}
-	return restartDecision(request, last, cause)
+	return restartDecision(request, last, startedAt, cause)
 }
