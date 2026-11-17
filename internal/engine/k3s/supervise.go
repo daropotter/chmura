@@ -28,6 +28,31 @@ type Supervisor struct {
 	Network  probe.Network
 }
 
+func prepareSupervisionPlan(plan deployment.InstancePlan) (deployment.InstancePlan, error) {
+	config, ports := plan.Health.Effective(), maps.Clone(plan.Ports)
+	plan.Health, plan.Ports = *config, ports
+	if plan.Readiness != deployment.ReadinessChecked || !networkCheck(config.Check, ports) {
+		return deployment.InstancePlan{}, ErrUnsupportedPlan
+	}
+	if config.StartupTimeout <= 0 || config.Ready.Successes <= 0 || config.Ready.UnreadyFailures <= 0 {
+		return deployment.InstancePlan{}, errors.New("instance health timings and thresholds must be positive")
+	}
+	if healthy := config.Healthy; healthy != nil {
+		if healthy.UnhealthyFailures <= 0 {
+			return deployment.InstancePlan{}, errors.New("instance healthy threshold must be positive")
+		}
+		if healthy.Check != nil && !networkCheck(healthy.Check, ports) {
+			return deployment.InstancePlan{}, ErrUnsupportedPlan
+		}
+	}
+	for _, port := range ports {
+		if port.Number < 1 || port.Number > 65535 {
+			return deployment.InstancePlan{}, errors.New("instance port number is invalid")
+		}
+	}
+	return plan, nil
+}
+
 // Monitor supervises one explicitly selected, already running generation.
 // It starts checks only after snapshot/watch establishment, cancels all work on
 // the first terminal cause, and waits for cleanup before returning that cause.
@@ -49,27 +74,12 @@ func (s Supervisor) monitor(ctx context.Context, request SupervisionRequest, onC
 	if onChange == nil {
 		return errors.New("instance supervision requires a readiness observer")
 	}
-	config, ports := request.Plan.Health.Effective(), maps.Clone(request.Plan.Ports)
-	request.Plan.Health, request.Plan.Ports = *config, ports
-	if request.Plan.Readiness != deployment.ReadinessChecked || !networkCheck(config.Check, ports) {
-		return ErrUnsupportedPlan
+	plan, err := prepareSupervisionPlan(request.Plan)
+	if err != nil {
+		return err
 	}
-	if config.StartupTimeout <= 0 || config.Ready.Successes <= 0 || config.Ready.UnreadyFailures <= 0 {
-		return errors.New("instance health timings and thresholds must be positive")
-	}
-	if healthy := config.Healthy; healthy != nil {
-		if healthy.UnhealthyFailures <= 0 {
-			return errors.New("instance healthy threshold must be positive")
-		}
-		if healthy.Check != nil && !networkCheck(healthy.Check, ports) {
-			return ErrUnsupportedPlan
-		}
-	}
-	for _, port := range ports {
-		if port.Number < 1 || port.Number > 65535 {
-			return errors.New("instance port number is invalid")
-		}
-	}
+	request.Plan = plan
+	config, ports := &plan.Health, plan.Ports
 
 	session, stop := context.WithCancelCause(ctx)
 	defer stop(nil)

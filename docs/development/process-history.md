@@ -225,18 +225,63 @@ exact historical replay; storage remains authoritative about current-head
 admission, terminal immutability and whether the key really matches its receipt.
 No terminal encoding change migrates or rewrites older retained facts.
 
+## One durable supervision cycle
+
+`k3s.Supervisor.ResumeDurable` joins the existing resume, process reporter and
+terminal adapter for one already bound current process. The caller supplies an
+authorized `ResumeRequest`, stable history-session and terminal keys, positive
+write-attempt/retry bounds and a finalization timeout. Invalid configuration,
+unsupported plans and missing, mismatched or closed bindings perform no writes
+or runtime I/O. No missing binding is created implicitly.
+
+The cycle owns these steps:
+
+1. Acknowledge the initial process-history receipt before starting runtime
+   observation. This wait uses the write-attempt timeout. Its initial
+   `EverReady=false` payload stays stable when reusing a session after recovery;
+   false cannot erase committed true, which Resume reloads before monitoring.
+2. Run the monitor and process-history worker together. The observer only queues
+   sticky first readiness. A permanent history failure cancels and joins the
+   monitor; monitor/parent cancellation leaves the history worker alive to drain.
+3. Capture outcome-receipt time once after the monitor joins. Flush observed
+   first readiness with a detached bounded context, then cancel/join the worker.
+4. Reload acknowledged history, prepare terminal evidence and retry its exact
+   key/payload until acknowledged or finalization fails. The final flush, read
+   and terminal retries share the finalization budget. Store cancellation
+   latency still applies, and started workers are joined before return.
+
+A nil method error returns `DurableSupervisionResult` with the acknowledged
+terminal process and original `Outcome`. Exit/healthy decisions retain their
+typed restart classification; startup timeout retains its distinct meaning.
+Every method error returns a zero result. Failed flushes, terminal writes,
+cancellation and observation loss never expose an unacknowledged restart
+decision through that result. Nonterminal stops preserve known first readiness
+without inventing a terminal record. Terminal retry exhaustion retains the last
+storage failure alongside the finalization deadline.
+
+Parent cancellation prevents terminal continuation, including when it arrives
+during draining or a terminal write. A canceled/lost response can still follow
+a commit: read retained history and reconcile explicitly. A later call rejects
+an already terminal generation; it does not resume or reissue that decision.
+
+This method owns only process-history reporting. It publishes no routing
+readiness and invokes no external observer. The caller must serialize ownership,
+admissions and runtime actions, and stop/drain any other reporters before acting.
+Terminal acknowledgement is neither ownership/fencing nor restart permission.
+
 ## Integration boundary
 
 ProcessReporter supplies bounded first-readiness queueing and acknowledgement,
 and PrepareProcessTerminal encodes verified outcomes for durable terminal writes.
-Lifecycle orchestration and failure/reconciliation policy remain owner work.
+ResumeDurable orchestrates one monitor and its process-history worker; the
+surrounding owner lifecycle and failure/reconciliation policy remain owner work.
 This library acquires no execution ownership, fences no old workers, publishes
 no routing readiness and executes no restart. A terminal snapshot is retained
 history and can become stale with respect to the current desired head.
 
-The recovery read path joins retained history to k3s supervision, and the new
-worker acknowledges first-readiness persistence. Terminal evidence now has a
-canonical adapter; next add owner orchestration, then authorized restart reconciliation.
+The recovery read path, first-readiness acknowledgement and terminal adapter
+now form one durable supervision cycle. Runtime-readiness publication and
+authorized restart reconciliation remain subsequent owner work.
 Agent/channel and API/CLI integration remain separate work. Tests use real
 temporary databases, virtual-time readiness, independent handles and fault
 injection; no live cluster or production database is accessed.
