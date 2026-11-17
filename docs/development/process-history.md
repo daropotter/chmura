@@ -180,18 +180,63 @@ still controls worker lifetimes, failure handling and serialization. Integration
 tests exercise resume → first readiness → exit → flush → stop/join → terminal
 record against temporary SQLite and a local typed runtime API.
 
+## Preparing terminal evidence from a supervisor outcome
+
+`k3s.PrepareProcessTerminal` converts an owner-verified completed outcome into a
+`state.ProcessTerminalObservation` without I/O. The owner supplies the authorized
+scope/plan, acknowledged process snapshot, exact instance and stable terminal
+key. It joins the supervisor/reporters and flushes first readiness before using
+this adapter. The prepared observation then goes to `RecordProcessTerminal`;
+preparation alone acknowledges no durable write and grants no runtime permission.
+
+The version-1 private canonical JSON uses a k3s discriminator and one cause:
+
+- Runtime exit requires a complete matching `InstanceExitError`, exact bound
+  start, resource version and valid finish time. Evidence retains exit code
+  (including zero), reason and UTC start/finish facts. Occurrence time is the
+  runtime finish; later receipt of the same exit does not change the event.
+- Startup failure requires the owner-verified `ErrStartupTimeout`, a supported
+  validated readiness plan and no acknowledged first readiness. The observation
+  must be at/after the original deadline. Occurrence time is that deadline,
+  calculated from actual process start and the effective startup timeout.
+- Healthy failure requires the supervisor's `RestartNeededError`, acknowledged
+  first readiness and its original instance, observed start and effective plan.
+  The supervisor now retains that start in the private decision snapshot. Evidence
+  retains the independent failure threshold and check fingerprint. A bare
+  `ErrUnhealthy` sentinel supplies no generation-bound supervisor decision.
+
+For health decisions, `ObservedAt` is the owner's time of receiving the completed
+outcome. Capture it once and preserve it on retries. It is not a claim of the
+exact probe-completion instant. The adapter stores only a SHA-256 fingerprint of
+the effective check and selected endpoint; raw probe paths, commands and error
+diagnostics are excluded. Frozen exit/fingerprint fixtures protect canonical
+v1 compatibility and equivalent time zones/defaults produce identical evidence.
+
+Cancellation, deadlines, observation loss, replacement, generic unavailability
+and ambiguous outcomes return `ErrNoTerminalEvidence` with no observation. The
+owner retains the original cause for cancellation/reconciliation. Changed process
+identity/start or a different healthy plan conflicts. Malformed facts/plans are
+rejected before any storage call. These checks rely on the owner verifying the
+outcome's provenance and the plan's association with desired intent.
+
+Use the exact prepared key/payload to recover from a lost response, including
+after database reopen. Preparation can use a retained terminal snapshot for an
+exact historical replay; storage remains authoritative about current-head
+admission, terminal immutability and whether the key really matches its receipt.
+No terminal encoding change migrates or rewrites older retained facts.
+
 ## Integration boundary
 
-ProcessReporter supplies bounded first-readiness queueing and acknowledgement
-outside probe callbacks. Lifecycle orchestration, durable terminal evidence and
-failure/reconciliation policy still belong to owner integration.
+ProcessReporter supplies bounded first-readiness queueing and acknowledgement,
+and PrepareProcessTerminal encodes verified outcomes for durable terminal writes.
+Lifecycle orchestration and failure/reconciliation policy remain owner work.
 This library acquires no execution ownership, fences no old workers, publishes
 no routing readiness and executes no restart. A terminal snapshot is retained
 history and can become stale with respect to the current desired head.
 
 The recovery read path joins retained history to k3s supervision, and the new
-worker acknowledges first-readiness persistence. Next add verified terminal
-evidence encoding and owner orchestration, then authorized restart reconciliation.
+worker acknowledges first-readiness persistence. Terminal evidence now has a
+canonical adapter; next add owner orchestration, then authorized restart reconciliation.
 Agent/channel and API/CLI integration remain separate work. Tests use real
 temporary databases, virtual-time readiness, independent handles and fault
 injection; no live cluster or production database is accessed.

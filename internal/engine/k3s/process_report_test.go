@@ -2,7 +2,6 @@ package k3s_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net"
 	"net/http"
@@ -66,6 +65,7 @@ func TestResumeFlushesFirstReadinessBeforeRecordingExit(t *testing.T) {
 	if !errors.As(err, &decision) || !errors.As(err, &exit) {
 		t.Fatalf("exit decision lost: %v", err)
 	}
+	outcome := err
 	// Monitor has joined its callbacks. Keep persistence alive until its queued
 	// first-readiness fact is acknowledged, then stop/join before terminal I/O.
 	if err := r.Flush(ctx); err != nil {
@@ -75,16 +75,15 @@ func TestResumeFlushesFirstReadinessBeforeRecordingExit(t *testing.T) {
 	if err := <-done; !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	evidence, err := json.Marshal(struct {
-		Code            int32  `json:"exit-code"`
-		Reason          string `json:"reason"`
-		ResourceVersion string `json:"resource-version"`
-	}{exit.ExitCode, exit.Reason, exit.ResourceVersion})
+	retained, err := store.GetProcess(ctx, request.Scope, request.SlotID, request.GenerationID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, recorded, err := store.RecordProcessTerminal(ctx, state.ProcessTerminalObservation{Scope: request.Scope, SlotID: request.SlotID, GenerationID: request.GenerationID,
-		IdempotencyKey: "exit", Identity: identity, StartedAt: started, Terminal: state.ProcessTerminal{Cause: state.ProcessExited, OccurredAt: exit.FinishedAt, Evidence: evidence}})
+	terminal, err := k3s.PrepareProcessTerminal(k3s.ProcessTerminalRequest{Process: retained, Instance: request.Instance, Plan: request.Plan, Cause: outcome, IdempotencyKey: "exit", ObservedAt: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, recorded, err := store.RecordProcessTerminal(ctx, terminal)
 	if err != nil || !recorded || !got.EverReady || got.Terminal == nil || got.Terminal.Cause != state.ProcessExited {
 		t.Fatalf("terminal overtook first-readiness persistence: %#v %v %v", got, recorded, err)
 	}

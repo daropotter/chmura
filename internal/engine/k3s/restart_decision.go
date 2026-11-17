@@ -3,6 +3,7 @@ package k3s
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/daropotter/chmura/internal/deployment"
 	"github.com/daropotter/chmura/internal/probe"
@@ -12,9 +13,10 @@ import (
 // returned only after its monitors have stopped. Unwrap retains the runtime
 // exit facts or unhealthy cause. It does not authorize or execute runtime I/O.
 type RestartNeededError struct {
-	instance Instance
-	plan     deployment.InstancePlan
-	cause    error
+	instance  Instance
+	plan      deployment.InstancePlan
+	startedAt time.Time
+	cause     error
 }
 
 func (e *RestartNeededError) Error() string {
@@ -52,12 +54,12 @@ func (e *RestartNeededError) Request(previous, next InstanceRequest) (RestartReq
 	return request, nil
 }
 
-func restartDecision(request SupervisionRequest, last probe.Readiness, cause error) error {
+func restartDecision(request SupervisionRequest, last probe.Readiness, startedAt time.Time, cause error) error {
 	var exit *InstanceExitError
 	exited := errors.As(cause, &exit) && exit.Instance == request.Instance
 	healthFailed := errors.Is(cause, probe.ErrUnhealthy) && last.EverReady && request.Plan.Health.Healthy != nil && request.Plan.Health.Healthy.Check != nil
 	if !exited && !healthFailed {
 		return cause
 	}
-	return &RestartNeededError{instance: request.Instance, plan: request.Plan, cause: cause}
+	return &RestartNeededError{instance: request.Instance, plan: request.Plan, startedAt: startedAt, cause: cause}
 }
