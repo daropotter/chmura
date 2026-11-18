@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/daropotter/chmura/internal/probe"
 	"github.com/daropotter/chmura/internal/state"
 	"github.com/daropotter/chmura/internal/supervision"
 )
@@ -25,26 +26,37 @@ type DurableSupervisionRequest struct {
 	TerminalKey string
 }
 
+// ReadinessPublication opts into current runtime-readiness reporting. SessionKey
+// must be unique to this call, even when reusing a process-history session key.
+type ReadinessPublication struct {
+	SessionKey string
+	Writes     ReporterOptions
+}
+
 // DurableSupervisionOptions bounds initial acknowledgement by Writes.AttemptTimeout.
-// FinalizeTimeout is shared by the final flush/read/terminal-retry path.
+// Optional initial readiness acknowledgement uses its own write-attempt timeout.
+// FinalizeTimeout is shared by final reporter flushes/read/terminal retries.
 // Store cancellation latency still applies; all started work is joined on return.
 type DurableSupervisionOptions struct {
 	Writes          supervision.ReporterOptions
 	FinalizeTimeout time.Duration
+	Readiness       *ReadinessPublication
 }
 
 // DurableSupervisionResult exposes the completed outcome only after terminal
-// history was acknowledged. A nil method error is still not restart permission;
+// history and any configured final unready publication were acknowledged.
+// A nil method error is still not restart permission;
 // the caller must authorize/serialize any later action and drain other reporters.
 type DurableSupervisionResult struct {
 	Process state.Process
 	Outcome error
 }
 
-// ResumeDurable owns one monitor and its process-history worker. It requires an
-// existing current binding and externally serialized ownership/authorized intent.
-// It publishes no runtime readiness, invokes no external observer and performs no
-// restart. Nonterminal stops retain first readiness but return no terminal result.
+// ResumeDurable owns one monitor and its process-history worker. With Readiness
+// configured it also owns runtime-readiness publication and final revocation.
+// It requires an existing current binding and externally serialized ownership
+// with authorized intent. It invokes no external observer and performs no restart.
+// Nonterminal stops retain first readiness but return no terminal result.
 func (s Supervisor) ResumeDurable(ctx context.Context, history DurableSupervisionStore, request DurableSupervisionRequest, options DurableSupervisionOptions) (DurableSupervisionResult, error) {
 	if err := ctx.Err(); err != nil {
 		return DurableSupervisionResult{}, err
@@ -68,6 +80,14 @@ func (s Supervisor) ResumeDurable(ctx context.Context, history DurableSupervisio
 	if err != nil {
 		return DurableSupervisionResult{}, err
 	}
+	var readiness *ReadinessReporter
+	if publication := options.Readiness; publication != nil {
+		readiness, err = NewReadinessReporter(s.Resolver.Client, request.Resume.Instance, publication.SessionKey, publication.Writes)
+		if err != nil {
+			return DurableSupervisionResult{}, err
+		}
+		readiness.Observe(probe.Readiness{})
+	}
 	// Persistence survives monitor/parent cancellation long enough to drain known
 	// first readiness. It is explicitly stopped/joined on every path after startup.
 	workerCtx, stopWorker := context.WithCancel(context.WithoutCancel(ctx))
@@ -81,15 +101,40 @@ func (s Supervisor) ResumeDurable(ctx context.Context, history DurableSupervisio
 		<-workerDone
 		return DurableSupervisionResult{}, fmt.Errorf("acknowledge initial process history: %w", err)
 	}
+	var readinessDone chan error
+	if readiness != nil {
+		readinessDone = make(chan error, 1)
+		go func() { readinessDone <- readiness.Run(workerCtx) }()
+		initial, stopInitial := context.WithTimeout(ctx, options.Readiness.Writes.AttemptTimeout)
+		err = readiness.Flush(initial)
+		stopInitial()
+		if err != nil {
+			stopWorker()
+			<-workerDone
+			<-readinessDone
+			return DurableSupervisionResult{}, fmt.Errorf("acknowledge initial runtime readiness: %w", err)
+		}
+	}
 	monitorCtx, stopMonitor := context.WithCancel(ctx)
 	monitorDone := make(chan error, 1)
-	go func() { monitorDone <- s.Resume(monitorCtx, history, request.Resume, reporter.Observe) }()
-	var outcome, workerErr error
-	workerEnded := false
+	go func() {
+		monitorDone <- s.Resume(monitorCtx, history, request.Resume, func(value probe.Readiness) {
+			reporter.Observe(value)
+			if readiness != nil {
+				readiness.Observe(value)
+			}
+		})
+	}()
+	var outcome, workerErr, readinessErr error
+	workerEnded, readinessEnded := false, false
 	select {
 	case outcome = <-monitorDone:
 	case workerErr = <-workerDone:
 		workerEnded = true
+		stopMonitor()
+		outcome = <-monitorDone
+	case readinessErr = <-readinessDone:
+		readinessEnded = true
 		stopMonitor()
 		outcome = <-monitorDone
 	}
@@ -97,19 +142,43 @@ func (s Supervisor) ResumeDurable(ctx context.Context, history DurableSupervisio
 	stopMonitor()
 	final, stopFinal := context.WithTimeout(context.WithoutCancel(ctx), options.FinalizeTimeout)
 	defer stopFinal()
+	// Revoke even if observation stopped before publishing any monitor callback.
+	if readiness != nil {
+		readiness.Observe(probe.Readiness{})
+	}
 	flushErr := reporter.Flush(final)
+	var readinessFlushErr error
+	if readiness != nil {
+		if err := readiness.Flush(final); err != nil {
+			readinessFlushErr = fmt.Errorf("flush runtime readiness: %w", err)
+		}
+	}
 	stopWorker()
 	if !workerEnded {
 		workerErr = <-workerDone
 	}
+	if readiness != nil && !readinessEnded {
+		readinessErr = <-readinessDone
+	}
 	if flushErr != nil {
-		return DurableSupervisionResult{}, errors.Join(ctx.Err(), fmt.Errorf("flush process history: %w", flushErr))
+		flushErr = fmt.Errorf("flush process history: %w", flushErr)
 	}
 	if workerEnded || !errors.Is(workerErr, context.Canceled) {
 		if workerErr == nil {
 			workerErr = errors.New("process history worker stopped unexpectedly")
 		}
-		return DurableSupervisionResult{}, errors.Join(ctx.Err(), workerErr)
+	} else {
+		workerErr = nil
+	}
+	if readiness != nil && (readinessEnded || !errors.Is(readinessErr, context.Canceled)) {
+		if readinessErr == nil {
+			readinessErr = errors.New("runtime readiness worker stopped unexpectedly")
+		}
+	} else {
+		readinessErr = nil
+	}
+	if err := errors.Join(flushErr, readinessFlushErr, workerErr, readinessErr); err != nil {
+		return DurableSupervisionResult{}, errors.Join(ctx.Err(), err)
 	}
 	if err := ctx.Err(); err != nil {
 		return DurableSupervisionResult{}, err

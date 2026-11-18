@@ -29,6 +29,8 @@ type gateStore struct {
 	interfere            func(*corev1.Pod)
 	dropReply            bool
 	beforeRequest        func(http.ResponseWriter, *http.Request) bool
+	watch                http.HandlerFunc
+	afterWrite           func(*corev1.Pod)
 }
 
 func (s *gateStore) snapshot() (*corev1.Pod, int, int) {
@@ -46,6 +48,10 @@ func gateClient(t *testing.T, s *gateStore) *coreclient.CoreV1Client {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if s.beforeRequest != nil && !s.beforeRequest(w, r) {
+			return
+		}
+		if s.watch != nil && r.Method == http.MethodGet && r.URL.Path == "/api/v1/namespaces/team-a/pods" {
+			s.watch(w, r)
 			return
 		}
 		s.mu.Lock()
@@ -82,6 +88,9 @@ func gateClient(t *testing.T, s *gateStore) *coreclient.CoreV1Client {
 			s.writes++
 			s.pod.Status = submitted.Status
 			s.pod.ResourceVersion = fmt.Sprintf("written-%d", s.writes)
+			if s.afterWrite != nil {
+				s.afterWrite(s.pod)
+			}
 			if s.dropReply {
 				s.dropReply = false
 				conn, _, err := w.(http.Hijacker).Hijack()
