@@ -36,12 +36,13 @@ type ReadinessWriter struct {
 
 const readinessReason = "chmura-readiness"
 
-// Apply verifies ownership and the running generation, then uses the base
+// Apply verifies ownership and the exact generation, then uses the base
 // resource version to fence the status update. It returns the accepted/current
 // version. A receipt in the gate condition permits identical retries after a
 // lost response or unrelated kubelet status updates. Only the latest receipt
 // is retained; an older result cannot overwrite a newer decision. Conflicts
 // are read once to recognize concurrent identical updates, never blindly retried.
+// Ready requires a running process; unready also accepts its confirmed exit.
 func (w ReadinessWriter) Apply(ctx context.Context, update ReadinessUpdate) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -119,7 +120,7 @@ func (w ReadinessWriter) Apply(ctx context.Context, update ReadinessUpdate) (str
 }
 
 func readinessState(pod *corev1.Pod, ref Instance, keyPrefix, receipt string, status corev1.ConditionStatus) (int, bool, error) {
-	if _, err := targetFromPod(pod, ref, nil); err != nil {
+	if _, err := readinessResourceVersion(pod, ref, status != corev1.ConditionFalse); err != nil {
 		return -1, false, err
 	}
 	if pod.ResourceVersion == "" || len(pod.OwnerReferences) != 0 || pod.Labels[managedLabel] != "chmura" || pod.Labels[instanceLabel] != pod.Name {
@@ -150,4 +151,18 @@ func readinessState(pod *corev1.Pod, ref Instance, keyPrefix, receipt string, st
 		return index, true, nil
 	}
 	return index, false, nil
+}
+
+// Revocation needs no live probe endpoint after a confirmed exact-process exit.
+// Keep ordinary unavailability/replacement checks and all ready=true checks strict.
+func readinessResourceVersion(pod *corev1.Pod, ref Instance, ready bool) (string, error) {
+	target, err := targetFromPod(pod, ref, nil)
+	if err == nil {
+		return target.ResourceVersion, nil
+	}
+	var exit *InstanceExitError
+	if !ready && errors.As(err, &exit) {
+		return exit.ResourceVersion, nil
+	}
+	return "", err
 }

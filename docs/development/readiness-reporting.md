@@ -29,6 +29,15 @@ a newer observation is reconciled by a following write. This is one owner's
 publication worker, not a distributed supervisor lease or permanent operation
 history. It does not periodically poll after an acknowledged result.
 
+The final unready result can also revoke the gate after a confirmed exit of the
+exact selected process, including exit code zero. This path requires complete
+runtime exit evidence and needs no live probe IP. Marking ready still requires
+a running target. Replacement, deletion and incomplete/unknown exit reports
+remain permanent failures; generic unavailability is not accepted as an exit.
+Ownership/gate validation, resource-version fencing and exact lost-response
+replay remain enforced by the writer. Ordinary target resolution still reports
+the exit instead of returning a live probe target.
+
 `Flush(ctx)` waits for acceptance of the state observed at entry, or a coalesced
 newer state. All concurrent waiters are notified; worker failure/cancellation
 unblocks them with its cause. An already accepted state remains acknowledged.
@@ -43,6 +52,6 @@ must never call Flush or otherwise wait for publication.
 
 Tests use local HTTP API/watch and application servers with real typed clients.
 They cover coalescing, blocked/canceled I/O, retry/backoff, lost responses,
-version conflicts, permanent errors, concurrent flushes and draining the final
-state from a supervisor. Agent wiring, durable history/ownership, automatic restart
+version conflicts, permanent errors, concurrent flushes, exit revocation/replay
+and draining the final state from a supervisor. Agent wiring, durable history/ownership, automatic restart
 triggering and API/CLI deployment remain separate increments.
