@@ -234,17 +234,30 @@ write-attempt/retry bounds and a finalization timeout. Invalid configuration,
 unsupported plans and missing, mismatched or closed bindings perform no writes
 or runtime I/O. No missing binding is created implicitly.
 
+Optional `DurableSupervisionOptions.Readiness` configures a
+`ReadinessPublication` using the supervisor's explicit runtime client. It needs
+a session key unique to this call and positive publication attempt/retry bounds.
+Unlike the replayable history-session key, a publication key must never be
+reused for a newly constructed reporter. Nil retains history-only supervision.
+
 The cycle owns these steps:
 
 1. Acknowledge the initial process-history receipt before starting runtime
    observation. This wait uses the write-attempt timeout. Its initial
    `EverReady=false` payload stays stable when reusing a session after recovery;
    false cannot erase committed true, which Resume reloads before monitoring.
-2. Run the monitor and process-history worker together. The observer only queues
-   sticky first readiness. A permanent history failure cancels and joins the
-   monitor; monitor/parent cancellation leaves the history worker alive to drain.
+   When publication is configured, next acknowledge initial unready using its
+   own write-attempt budget before starting monitoring, even with retained first
+   readiness or an old ready gate. Failed initial acknowledgement starts no watch
+   or probes; failed initial history acknowledgement starts no publication.
+2. Run the monitor and configured workers together. The observer only queues
+   sticky first readiness and the latest current readiness, without outbound I/O.
+   A permanent worker failure cancels and joins the monitor; monitor/parent
+   cancellation leaves workers alive to drain.
 3. Capture outcome-receipt time once after the monitor joins. Flush observed
-   first readiness with a detached bounded context, then cancel/join the worker.
+   first readiness and explicitly publish/flush final unready, even if no monitor
+   callback ran. Both workers stay alive under a detached shared finalization
+   budget until their flushes complete or fail, then are canceled and joined.
 4. Reload acknowledged history, prepare terminal evidence and retry its exact
    key/payload until acknowledged or finalization fails. The final flush, read
    and terminal retries share the finalization budget. Store cancellation
@@ -253,9 +266,10 @@ The cycle owns these steps:
 A nil method error returns `DurableSupervisionResult` with the acknowledged
 terminal process and original `Outcome`. Exit/healthy decisions retain their
 typed restart classification; startup timeout retains its distinct meaning.
-Every method error returns a zero result. Failed flushes, terminal writes,
-cancellation and observation loss never expose an unacknowledged restart
-decision through that result. Nonterminal stops preserve known first readiness
+Every method error returns a zero result. Initial publication errors, worker
+or flush failures, terminal write errors, cancellation and observation loss
+never expose an unacknowledged restart decision through that result.
+Nonterminal stops preserve known first readiness
 without inventing a terminal record. Terminal retry exhaustion retains the last
 storage failure alongside the finalization deadline.
 
@@ -264,8 +278,16 @@ during draining or a terminal write. A canceled/lost response can still follow
 a commit: read retained history and reconcile explicitly. A later call rejects
 an already terminal generation; it does not resume or reissue that decision.
 
-This method owns only process-history reporting. It publishes no routing
-readiness and invokes no external observer. The caller must serialize ownership,
+With publication configured, terminal recording follows acknowledgement of both
+first-readiness history and final unready. Confirmed exact-process exit can
+still revoke the gate without a live probe endpoint. A failed publication worker
+cannot acknowledge a later revocation; any such failure requires explicit owner
+reconciliation rather than assuming the gate was cleared. Neither an initial
+unready acknowledgement nor a durable `EverReady` fact proves current readiness.
+
+The method owns the configured reporters and invokes no external observer.
+Publication acknowledges Chmura's custom runtime condition, not an implemented
+router's withdrawal of traffic. The caller must serialize ownership,
 admissions and runtime actions, and stop/drain any other reporters before acting.
 Terminal acknowledgement is neither ownership/fencing nor restart permission.
 
@@ -273,15 +295,16 @@ Terminal acknowledgement is neither ownership/fencing nor restart permission.
 
 ProcessReporter supplies bounded first-readiness queueing and acknowledgement,
 and PrepareProcessTerminal encodes verified outcomes for durable terminal writes.
-ResumeDurable orchestrates one monitor and its process-history worker; the
-surrounding owner lifecycle and failure/reconciliation policy remain owner work.
-This library acquires no execution ownership, fences no old workers, publishes
-no routing readiness and executes no restart. A terminal snapshot is retained
-history and can become stale with respect to the current desired head.
+ResumeDurable orchestrates one monitor, its process-history worker and optional
+runtime-readiness publication. The surrounding owner lifecycle and
+failure/reconciliation policy remain owner work.
+This library acquires no execution ownership, fences no old workers and executes
+no restart. A terminal snapshot is retained history and can become stale with
+respect to the current desired head.
 
 The recovery read path, first-readiness acknowledgement and terminal adapter
-now form one durable supervision cycle. Runtime-readiness publication and
-authorized restart reconciliation remain subsequent owner work.
+now form one durable supervision cycle with optional runtime-readiness publication.
+Authorized restart reconciliation and surrounding owner lifecycle remain work.
 Agent/channel and API/CLI integration remain separate work. Tests use real
 temporary databases, virtual-time readiness, independent handles and fault
 injection; no live cluster or production database is accessed.

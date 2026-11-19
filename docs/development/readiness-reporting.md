@@ -50,6 +50,17 @@ context, handle any publication failure, then cancel and join Run. Canceling the
 reporter first does not guarantee delivery of that final state. Probe callbacks
 must never call Flush or otherwise wait for publication.
 
+`Supervisor.ResumeDurable` can own this worker through its optional
+`ReadinessPublication` configuration. It acknowledges initial unready after the
+initial process-history receipt and before starting monitoring. Its callbacks
+queue both sticky process history and coalesced current readiness. On stop,
+including parent cancellation, it drains first readiness and final unready under
+a detached shared finalization budget before canceling/joining either worker.
+Terminal recording and the completed result require both acknowledgements;
+publication failure returns a zero result for explicit owner reconciliation.
+Each call needs a new publication session key even if reusing a history session.
+This acquires no ownership/fencing and executes no restart.
+
 Tests use local HTTP API/watch and application servers with real typed clients.
 They cover coalescing, blocked/canceled I/O, retry/backoff, lost responses,
 version conflicts, permanent errors, concurrent flushes, exit revocation/replay
