@@ -16,7 +16,45 @@ available through error unwrapping. This is a decision handoff, not execution:
 the owner must still complete the authorization, reporting, serialization and
 durable-operation steps below before calling `Restarter.Ensure`.
 
-The adapter validates both requests before any API calls and inspects an
+## Recovering a restart request
+
+`PrepareProcessRestart` recovers a `RestartRequest` from an owner-verified
+retained `state.Process`, its exact private instance, original creation request
+and explicit successor request. It performs no I/O and needs no live
+`RestartNeededError`, so it works after database reopen and owner recovery.
+
+Only canonical private v1 k3s runtime-exit or unhealthy evidence is supported.
+Exit retains code zero as well as failures, and verifies the bound start and
+runtime finish against the terminal occurrence. Healthy evidence requires
+retained first readiness and the independent check/threshold fingerprint from
+the supplied original plan. The adapter rebuilds the terminal payload with the
+existing encoder and compares its exact bytes and occurrence. Missing terminal
+history, startup timeout, unknown versions/engines, mixed causes, extra or
+duplicate fields and malformed/noncanonical evidence produce no request.
+Startup failure remains a failure, with no implicit retry policy.
+
+Preparation validates the original runtime reference and existing restart
+constraints: an explicit different successor key in the same namespace, the
+same portable declaration/resolved artifact, and explicit admitted resources.
+Both returned requests have independent copies of health/ports; caller mutation
+cannot change the prepared snapshot. Equivalent time zones and omitted effective
+defaults preserve the candidate. No retained data is migrated or rewritten.
+
+This is a candidate, not execution authorization. The owner must verify that
+the supplied process/creation intent belongs to the authorized desired state,
+durably admit the restart operation, serialize it, drain all reporters and
+recheck its currency before each executor call. The evidence is not a full
+creation-intent record or a worker lease. The adapter does not read the desired
+head, fence another owner or deduplicate obsolete restart operations.
+
+Tests persist/reopen terminal history, prepare without runtime calls and then
+explicitly authorize the existing executor in a local fixture: retirement must
+precede creation, and an exact retry after a lost creation reply recovers one
+successor with fresh readiness. No live cluster is accessed.
+
+## Executing an authorized request
+
+`Restarter.Ensure` validates both requests before any API calls and inspects an
 existing successor for key/intent/ownership conflicts before retiring the old
 generation. It then delegates to the retirement adapter. While old resource
 absence is unconfirmed, the result has `Retiring: true` and no successor

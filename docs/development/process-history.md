@@ -304,7 +304,10 @@ respect to the current desired head.
 
 The recovery read path, first-readiness acknowledgement and terminal adapter
 now form one durable supervision cycle with optional runtime-readiness publication.
-Authorized restart reconciliation and surrounding owner lifecycle remain work.
+`PrepareProcessRestart` can recover an executor candidate from its canonical
+retained exit/healthy history without a live supervisor error; see
+[restart recovery](instance-restart.md#recovering-a-restart-request). Durable
+restart-operation admission/currency and surrounding owner lifecycle remain work.
 Agent/channel and API/CLI integration remain separate work. Tests use real
 temporary databases, virtual-time readiness, independent handles and fault
 injection; no live cluster or production database is accessed.
