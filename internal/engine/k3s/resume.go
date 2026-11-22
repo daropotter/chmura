@@ -35,6 +35,16 @@ type ResumeRequest struct {
 	Plan         deployment.InstancePlan
 }
 
+type processIdentity struct {
+	Version       int    `json:"version"`
+	Engine        string `json:"engine"`
+	Namespace     string `json:"namespace"`
+	PodName       string `json:"pod-name"`
+	PodUID        string `json:"pod-uid"`
+	ContainerName string `json:"container-name"`
+	ContainerID   string `json:"container-id"`
+}
+
 // EncodeProcessIdentity encodes the complete private k3s reference for durable
 // state.Process identity comparisons. Version 1 is canonical and must remain
 // stable for stored bindings; mutable IP, resource version and readiness are
@@ -45,15 +55,20 @@ func EncodeProcessIdentity(ref Instance) ([]byte, error) {
 			return nil, errors.New("process identity requires a complete UTF-8 runtime reference")
 		}
 	}
-	return json.Marshal(struct {
-		Version       int    `json:"version"`
-		Engine        string `json:"engine"`
-		Namespace     string `json:"namespace"`
-		PodName       string `json:"pod-name"`
-		PodUID        string `json:"pod-uid"`
-		ContainerName string `json:"container-name"`
-		ContainerID   string `json:"container-id"`
-	}{1, "k3s", ref.Namespace, ref.PodName, ref.PodUID, ref.ContainerName, ref.ContainerID})
+	return json.Marshal(processIdentity{1, "k3s", ref.Namespace, ref.PodName, ref.PodUID, ref.ContainerName, ref.ContainerID})
+}
+
+func decodeProcessIdentity(data []byte) (Instance, error) {
+	var stored processIdentity
+	if err := json.Unmarshal(data, &stored); err != nil {
+		return Instance{}, fmt.Errorf("decode process identity: %w", err)
+	}
+	ref := Instance{Namespace: stored.Namespace, PodName: stored.PodName, PodUID: stored.PodUID, ContainerName: stored.ContainerName, ContainerID: stored.ContainerID}
+	canonical, err := EncodeProcessIdentity(ref)
+	if err != nil || stored.Version != 1 || stored.Engine != "k3s" || !bytes.Equal(data, canonical) {
+		return Instance{}, fmt.Errorf("%w: unsupported or noncanonical process identity", state.ErrConflict)
+	}
+	return ref, nil
 }
 
 // Resume checks retained history before any runtime I/O, then monitors the exact
