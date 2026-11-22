@@ -84,9 +84,9 @@ cannot create a pool with a command.
 
 ## Bootstrap
 
-### Run the discovery server
+### Run the control plane
 
-The implemented server currently exposes installation discovery over HTTPS:
+The server exposes public installation discovery at `GET /v1/info` over HTTPS:
 
 ```bash
 chmura-server serve --tls-cert server.pem --tls-key server-key.pem
@@ -108,10 +108,10 @@ The server opens or creates the database and initializes its schema before
 reporting its listening address, keeps it open while serving, and closes it on
 exit. Existing records survive restarts. The parent directory must already
 exist; the operator owns file permissions and backups. Invalid paths or
-unsupported schema versions prevent startup. Without `--state`, discovery
-continues without a database. This does not create spaces, projects or an admin
-account, and does not enable deployment endpoints. Use the separate bootstrap
-command to create the first administrator.
+unsupported schema versions prevent startup. With `--state`, the server also
+accepts [deploy submissions](development/deploy-acceptance.md#https-submission)
+for existing projects. Submitters need the token of the administrator created
+by `chmura-server init`. Discovery works with or without `--state`.
 
 ### Installation bootstrap
 
@@ -143,8 +143,8 @@ administrator. It requires a regular token file with no group or other
 permissions. The database stores a SHA-256 digest of the token. Retrying with
 the same name, token and idempotency key succeeds with the same administrator.
 Changing any of those inputs returns state conflict (exit 3). Keep the token
-in a secure store. The HTTPS API currently exposes discovery. Token
-authentication and rotation follow in later increments.
+in a secure store. The built-in administrator can submit deployments for any
+existing project in the installation using the token as a Bearer credential.
 
 Once node enrollment is available, a node joins from **its own side** with a
 single-use token that carries its cluster and location:

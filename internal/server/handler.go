@@ -11,7 +11,7 @@ import (
 )
 
 // NewHandler builds the API for the installation's explicitly selected profile.
-func NewHandler(profile string) (http.Handler, error) {
+func NewHandler(profile string) (*http.ServeMux, error) {
 	if profile != "production" && profile != "dev" {
 		return nil, fmt.Errorf("invalid installation profile %q: use production or dev", profile)
 	}

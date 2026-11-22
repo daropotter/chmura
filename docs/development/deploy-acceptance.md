@@ -42,5 +42,33 @@ Changes that normalize to the same declaration, such as reordered mapping keys
 or equivalent durations, replay under the same key. The operation can read the
 saved revision to build its execution plan. The submission path performs
 portable planning. Image resolution, placement and engine capabilities are
-checked when preparing execution. The public HTTP layer will supply an
-authenticated caller and target authorization.
+checked when preparing execution.
+
+### HTTPS submission
+
+`chmura-server serve --state` registers
+`POST /v1/spaces/{space}/projects/{project}/deployments`. Use the stable IDs of
+an existing space and project in the path. The bootstrap administrator has
+access to all projects in the installation. The request requires these headers.
+
+- `Authorization: Bearer <administrator-token>`
+- `Idempotency-Key: <client-generated-key>`
+- `Content-Type: application/json`
+
+Send one JSON object of up to 1 MiB containing the integer `base-version`,
+the `base-revision-id` string and the manifest YAML as the `manifest` string.
+For the first deploy, send `base-version` of `0` and omit `base-revision-id`
+or send an empty string. For subsequent deploys, supply the current version
+and revision ID. Reading that pair through the public API is a separate
+increment.
+
+The server returns `202 Accepted` and a JSON object with `operation-id` and
+`status`. Retry with the same target, key, base and manifest to retrieve the
+same operation. Acceptance records desired state. Execution and rollout are
+separate steps.
+
+The server returns `401` with a Bearer challenge if the administrator
+credential is missing or invalid, `400` for invalid input, `404` for an unknown
+target, and `409` for a stale base or a project or idempotency conflict.
+It returns `413` for a body over the size limit, `415` for an unsupported content
+type, and `500` for an unexpected backend error.

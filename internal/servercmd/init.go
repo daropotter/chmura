@@ -2,7 +2,6 @@ package servercmd
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/daropotter/chmura/internal/identity"
 	"github.com/daropotter/chmura/internal/state"
 	"github.com/daropotter/chmura/internal/state/sqlite"
 )
@@ -69,24 +69,18 @@ func bootstrapTokenDigest(path string) ([32]byte, error) {
 	if err != nil || !privateRegularFile(openedInfo) || !os.SameFile(info, openedInfo) {
 		return [32]byte{}, errors.New("--admin-token-file changed while opening")
 	}
-	const tokenLength = 64
-	data, err := io.ReadAll(io.LimitReader(file, tokenLength+3))
+	data, err := io.ReadAll(io.LimitReader(file, identity.AdminTokenLength+3))
 	if err != nil {
 		return [32]byte{}, errors.New("cannot read --admin-token-file")
 	}
 	if token, hasNewline := bytes.CutSuffix(data, []byte("\n")); hasNewline {
 		data = bytes.TrimSuffix(token, []byte("\r"))
 	}
-	invalidToken := errors.New("--admin-token-file must contain exactly 64 lowercase hexadecimal characters")
-	if len(data) != tokenLength {
-		return [32]byte{}, invalidToken
+	digest, err := identity.AdminTokenDigest(data)
+	if err != nil {
+		return [32]byte{}, fmt.Errorf("--admin-token-file: %w", err)
 	}
-	for _, ch := range data {
-		if (ch < '0' || ch > '9') && (ch < 'a' || ch > 'f') {
-			return [32]byte{}, invalidToken
-		}
-	}
-	return sha256.Sum256(data), nil
+	return digest, nil
 }
 
 func privateRegularFile(info os.FileInfo) bool {
