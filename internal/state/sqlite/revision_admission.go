@@ -32,8 +32,7 @@ func (s *Store) admitRevision(ctx context.Context, request state.RevisionAdmissi
 	}
 	if strings.TrimSpace(request.SpaceID) == "" || strings.TrimSpace(request.ProjectID) == "" || strings.TrimSpace(request.RevisionID) == "" ||
 		strings.TrimSpace(request.OperationID) == "" || strings.TrimSpace(request.IdempotencyKey) == "" ||
-		request.ExpectedVersion < 0 || request.ExpectedVersion == math.MaxInt64 ||
-		request.ExpectedVersion == 0 && request.ExpectedRevisionID != "" || request.ExpectedVersion > 0 && strings.TrimSpace(request.ExpectedRevisionID) == "" {
+		!validRevisionBase(request.ExpectedVersion, request.ExpectedRevisionID) {
 		return state.RevisionSelection{}, false, errors.New("revision admission requires space, project, snapshot, operation, key and a valid base version/revision pair")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -95,19 +94,37 @@ func (s *Store) admitRevision(ctx context.Context, request state.RevisionAdmissi
 	if head.Version != request.ExpectedVersion || head.RevisionID != request.ExpectedRevisionID {
 		return state.RevisionSelection{}, false, state.ErrConflict
 	}
-	selected, err := scanRevisionSelection(tx.QueryRowContext(ctx, `INSERT INTO revision_selections (project_id, version, revision_id, base_revision_id, operation_id, key_hash)
-		VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING project_id, revision_id, operation_id, version, base_revision_id`,
-		projectID, request.ExpectedVersion+1, revisionID, request.ExpectedRevisionID, request.OperationID, keyHash))
-	if errors.Is(err, sql.ErrNoRows) {
-		return state.RevisionSelection{}, false, state.ErrConflict
-	}
+	selected, err := insertRevisionSelection(ctx, tx, state.RevisionSelection{
+		ProjectID: projectID, RevisionID: revisionID, OperationID: request.OperationID,
+		Version: request.ExpectedVersion + 1, BaseRevisionID: request.ExpectedRevisionID,
+	}, keyHash)
 	if err != nil {
-		return state.RevisionSelection{}, false, fmt.Errorf("record revision selection: %w", err)
+		return state.RevisionSelection{}, false, err
 	}
 	if err := tx.Commit(); err != nil {
 		return state.RevisionSelection{}, false, fmt.Errorf("commit revision admission: %w", err)
 	}
 	return selected, true, nil
+}
+
+func validRevisionBase(version int64, id string) bool {
+	if version == 0 {
+		return id == ""
+	}
+	return version > 0 && version < math.MaxInt64 && strings.TrimSpace(id) != ""
+}
+
+func insertRevisionSelection(ctx context.Context, tx *sql.Tx, selection state.RevisionSelection, receiptKey string) (state.RevisionSelection, error) {
+	stored, err := scanRevisionSelection(tx.QueryRowContext(ctx, `INSERT INTO revision_selections (project_id, version, revision_id, base_revision_id, operation_id, key_hash)
+		VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING project_id, revision_id, operation_id, version, base_revision_id`,
+		selection.ProjectID, selection.Version, selection.RevisionID, selection.BaseRevisionID, selection.OperationID, receiptKey))
+	if errors.Is(err, sql.ErrNoRows) {
+		return state.RevisionSelection{}, state.ErrConflict
+	}
+	if err != nil {
+		return state.RevisionSelection{}, fmt.Errorf("record revision selection: %w", err)
+	}
+	return stored, nil
 }
 
 // CurrentRevision reads the latest admitted desired selection, not observed
