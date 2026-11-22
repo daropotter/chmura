@@ -39,6 +39,9 @@ Version 9 adds [immutable manifest snapshots](revision-state.md), scoped to an
 existing project without selecting an active revision.
 Version 10 adds [project revision admission](revision-admission.md), with
 explicit base comparison and retained desired-selection receipts.
+Version 11 adds the singleton [first-administrator record](../architecture.md#installation-bootstrap).
+Opening a database creates an empty table. The local `init` command explicitly
+binds the administrator, token digest and idempotency key hash.
 One connection per handle bounds local contention; independent handles still
 rely on database constraints, not a process mutex.
 Under a write lock, the driver may spend the busy timeout before returning the
