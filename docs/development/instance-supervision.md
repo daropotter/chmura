@@ -57,6 +57,14 @@ a container ID, or publish status. The caller must retain generation history and
 reconcile a gap explicitly; native Kubernetes readiness cannot supply that
 history. A generation already declared failed must not be resumed.
 
+For a current completed restart, `Resolver.BindRestartSuccessor` verifies and
+acknowledges the successor's exact process binding, then returns a `ResumeRequest`
+with the accepted plan. Existing live bindings recover without runtime discovery;
+fresh bindings start with no retained Chmura first readiness. The owner can pass
+that request to `ResumeDurable`, including when the process exited before initial
+discovery. See [successor binding](instance-restart.md#binding-the-completed-successor)
+for the acknowledgement and ownership boundaries.
+
 The [readiness reporter](readiness-reporting.md) serializes publication through
 the [readiness writer](probe-execution.md#readiness-publication), keeping API I/O
 outside probe callbacks. The owner drains the final local state before stopping
