@@ -184,6 +184,47 @@ monitor startup/shutdown, reporter draining, operation admission and restart
 scheduling. A running restart with an already-bound successor continues to require
 explicit result reconciliation; this handoff only accepts succeeded operations.
 
+## Running one serialized restart action
+
+`k3s.RestartOwner.Run` composes admission, execution, successor binding and
+`ResumeDurable` for one explicitly authorized restart. Configure an immutable
+`Supervisor` with an explicit runtime client and a shared
+`supervision.SlotRunner`. `RestartOwnerRequest` supplies the existing admission
+request and stable history/terminal keys. `RestartOwnerOptions` supplies a
+positive retirement interval and the existing bounded supervision options.
+Invalid configuration and unsupported supervision plans fail before admission
+or runtime I/O. Optional runtime-readiness publication requires a fresh session
+key for each invocation, including retries; the admission/history/terminal
+request stays stable.
+
+The shared runner excludes other participating actions for that exact scope/slot
+across the entire call: acceptance/start/admission, retirement waits, durable
+creation completion, exact successor binding and the joined supervision cycle.
+An occupied slot conflicts before any admission or runtime action. Related
+actions outside this method must share that runner too. The owner still
+authorizes scope/intent and drains other reporters; this method does not cancel
+or replace a separately active owner. Independent processes are not fenced.
+
+Only an acknowledged `Retiring` step is polled, using the explicit interval and
+caller context. Confirmed old absence still precedes creation. Runtime/storage
+errors and pending/unavailable successor discovery return their original causes
+for caller reconciliation and exact retry; they do not start an implicit retry
+policy or allocate another generation. Creation/admission may already have
+committed. A completed creation receipt cannot recreate a deleted successor.
+
+The slot remains held until supervision has joined its monitors and reporters,
+including detached finalization after cancellation and delayed terminal-write
+acknowledgement. A nil method error returns the existing
+`DurableSupervisionResult` only after its terminal history and configured final
+unready are acknowledged. Every method error exposes zero result. The successor
+earns its own first readiness; a newly observed terminal outcome is not permission
+to choose another restart. A later call on an already terminal successor conflicts
+and requires an explicit history read/reconciliation rather than reissuing it.
+
+This is one owned action, not an automatic scheduler or server/agent integration.
+The caller chooses future generation identities, placement and failure/retry
+policy. Existing transaction and distributed ownership boundaries remain.
+
 ## Executing an authorized request
 
 `Restarter.Ensure` validates both requests before any API calls and inspects an

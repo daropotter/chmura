@@ -30,6 +30,7 @@ type lifetimeStore struct {
 	createStatus            int
 	interfere               func(*corev1.Pod)
 	beforeDelete            func(*http.Request)
+	watch                   http.HandlerFunc
 	dropReply, holdReply    bool
 	dropCreateReply         bool
 	accepted                chan struct{}
@@ -65,7 +66,12 @@ func lifetimeClient(t *testing.T, s *lifetimeStore) (*coreclient.CoreV1Client, k
 		name := strings.TrimPrefix(r.URL.Path, prefix)
 		s.mu.Lock()
 		beforeDelete := s.beforeDelete
+		watch := s.watch
 		s.mu.Unlock()
+		if r.Method == http.MethodGet && r.URL.Path == collection && r.URL.Query().Get("watch") == "true" && watch != nil {
+			watch(w, r)
+			return
+		}
 		if r.Method == http.MethodDelete && beforeDelete != nil {
 			beforeDelete(r)
 		}
