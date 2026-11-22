@@ -40,6 +40,9 @@ var projectSchema string
 //go:embed revisions.sql
 var revisionSchema string
 
+//go:embed revision_admission.sql
+var revisionAdmissionSchema string
+
 // Store owns one database handle. Independent handles share database uniqueness
 // constraints; the connection limit is not a distributed ownership mechanism.
 type Store struct{ db *sql.DB }
@@ -124,7 +127,12 @@ func initialize(ctx context.Context, db *sql.DB) error {
 		if _, err := tx.ExecContext(ctx, revisionSchema); err != nil {
 			return err
 		}
+		fallthrough
 	case 9:
+		if _, err := tx.ExecContext(ctx, revisionAdmissionSchema); err != nil {
+			return err
+		}
+	case 10:
 	default:
 		return fmt.Errorf("unsupported state schema version %d", version)
 	}
