@@ -43,8 +43,9 @@ ownership, reopen/history replay, unchanged-content requests, scoped reads and
 creation, concurrency, foreign keys, storage failures and frozen migration
 fixtures, using temporary databases only.
 
-Snapshot storage leaves the active project revision unchanged. Base-revision
-conflict checks, active-revision selection, operation binding and atomic deploy
-admission remain separate increments, along with API/CLI commands and rollout.
-Revision IDs have no ordering guarantee. Callers must not infer active or newest
-state from a snapshot's existence or its ID.
+Snapshot storage leaves the project's selection unchanged.
+[Revision admission](revision-admission.md) separately checks a base version/ID
+pair and binds a desired selection to an existing running operation. The public
+API/CLI acceptance workflow and rollout remain separate increments. Snapshot
+IDs have no ordering guarantee; `CurrentRevision` supplies the latest admitted
+desired selection, separately from observed rollout state.

@@ -37,6 +37,8 @@ Version 8 adds the [project registry](project-state.md), with names and creation
 keys scoped to an existing space.
 Version 9 adds [immutable manifest snapshots](revision-state.md), scoped to an
 existing project without selecting an active revision.
+Version 10 adds [project revision admission](revision-admission.md), with
+explicit base comparison and retained desired-selection receipts.
 One connection per handle bounds local contention; independent handles still
 rely on database constraints, not a process mutex.
 Under a write lock, the driver may spend the busy timeout before returning the
