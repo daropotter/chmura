@@ -104,8 +104,49 @@ The owner must serialize each complete call with cancellation/supersession and
 other runtime actions, stop/join old monitors and drain reporters before driving,
 and wait for durable completion before binding/monitoring the successor. Current
 snapshots do not fence a competing worker. Runtime and SQLite are not one atomic
-transaction. Distributed ownership, bound-result reconciliation, scheduling,
-container discovery and server/agent/API/CLI wiring remain separate increments.
+transaction. Distributed ownership, bound-result reconciliation for unfinished
+operations, scheduling and server/agent/API/CLI wiring remain separate increments.
+
+## Binding the completed successor
+
+`Resolver.BindRestartSuccessor` links a succeeded restart to its exact process
+and returns a `ResumeRequest` for the existing supervision cycle. It validates
+the private operation intent/result and requires the selected successor to be
+the current slot head. This differs from historical creation-result replay:
+an obsolete completed operation cannot authorize supervision of its old process.
+The owner authorizes scope/intent, serializes the whole call with admissions and
+other runtime actions, and owns discovery deadlines/backoff.
+
+For an unbound successor, the adapter reads one Pod and verifies the completed
+UID, original creation key/intent, ownership and full supported execution shape.
+It discovers the application's container ID and actual process start, requiring
+a nonterminating versioned snapshot with either a running process or complete
+runtime-exit facts. A confirmed exit, including code zero, can be bound even
+before first observation, allowing `ResumeDurable` to retain that terminal outcome.
+Waiting/image pull, missing or ambiguous facts, foreign/replaced resources and
+unknown termination provide no binding. Discovery does not need a probe IP;
+supervision separately establishes its current network target and continuity.
+
+The initial process observation always supplies `EverReady: false`, regardless
+of runtime readiness or predecessor history. Its reserved key is
+`restart-successor-bind-v1`; the portable store hashes the key and retains exact
+identity/start. Only a matching binding acknowledgement and final current-head
+check expose the resume request. Errors/cancellation expose zero request, even
+when a database write committed. Repeat the same selection after a lost reply.
+
+A matching live binding replays from history without a runtime client, including
+after database reopen. It preserves later first readiness and the immutable
+container identity/start; it never rediscovers or adopts a replacement container.
+The returned plan is recovered independently from accepted intent. A terminal,
+mismatched or superseded binding cannot resume. The request acknowledges retained
+facts, not current existence or readiness; `ResumeDurable` rechecks the head and
+observes that exact runtime generation before starting probes.
+
+This method performs no runtime writes or creation and starts no monitor itself.
+Current-head reads are not a distributed lease or fence. The owner still controls
+monitor startup/shutdown, reporter draining, operation admission and restart
+scheduling. A running restart with an already-bound successor continues to require
+explicit result reconciliation; this handoff only accepts succeeded operations.
 
 ## Executing an authorized request
 
