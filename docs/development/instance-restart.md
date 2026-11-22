@@ -63,6 +63,50 @@ explicitly authorize the existing executor in a local fixture: retirement must
 precede creation, and an exact retry after a lost creation reply recovers one
 successor with fresh readiness. No live cluster is accessed.
 
+## Driving an admitted operation
+
+`PrepareRestartOperationIntent` freezes the validated predecessor/explicit
+successor creation requests, effective plan and selected slot lineage into
+canonical private v1 YAML. The owner supplies the different successor generation
+ID and positive predecessor version, authorizes the scope/intent, accepts that
+intent as a `restart` operation, marks it running and calls `AdmitRestart` with
+the same bytes. Preparation itself admits nothing and performs no runtime I/O.
+The format is engine recovery data, not a manifest escape hatch or public API.
+Creation keys are retained for exact replay; secrets must never be supplied.
+
+`Restarter.EnsureAdmitted` accepts a `RestartJournal` and explicit
+`RestartSelection`. Each call validates the selected operation, historical
+generation and private intent. For running work it then calls
+`GetCurrentRestart`, verifies the selected predecessor/terminal evidence and
+recovers the original runtime identity before invoking one `Ensure` step.
+Completed/canceled, superseded or already-bound running work never reaches
+runtime. Unknown, malformed or noncanonical encodings also fail before runtime.
+There is no schema migration or additional local checkpoint.
+
+While retirement is pending, the method returns `Retiring` and leaves the
+operation running. Once creation is acknowledged, it records a canonical private
+v1 JSON result containing the successor Pod identity and accepted-intent hash.
+The transient `Created` flag is excluded so retries produce identical bytes.
+The driver reserves the operation update key `restart-complete-v1` for this
+transition. It exposes the identity only after validating the durable success
+acknowledgement; storage failure or cancellation returns zero progress. An error
+can still follow runtime creation or a committed database write, so retry the
+exact selection rather than allocate a new creation key.
+
+A succeeded operation replays its validated stored result without a runtime
+client or a current-head check, including after database reopen, successor
+binding/deletion or later supersession. It acknowledges historical creation,
+not current existence or readiness. Replay never recreates the Pod. A running
+operation retries the same idempotent creation when completion was not committed;
+an already-bound successor instead requires explicit process/result reconciliation.
+
+The owner must serialize each complete call with cancellation/supersession and
+other runtime actions, stop/join old monitors and drain reporters before driving,
+and wait for durable completion before binding/monitoring the successor. Current
+snapshots do not fence a competing worker. Runtime and SQLite are not one atomic
+transaction. Distributed ownership, bound-result reconciliation, scheduling,
+container discovery and server/agent/API/CLI wiring remain separate increments.
+
 ## Executing an authorized request
 
 `Restarter.Ensure` validates both requests before any API calls and inspects an
@@ -100,7 +144,7 @@ rather than an implicitly chosen retry policy.
 
 This is desired-resource reconciliation, not a permanent operation receipt:
 replaying an obsolete request could recreate a successor that was later deleted.
-Portable operation progress/admission/currency now supply durable owner facts.
-Their engine-specific integration, distributed ownership/fencing, restart scheduling,
-container-ID discovery, agent wiring and API/CLI commands remain separate work.
+`EnsureAdmitted` adds a durable operation receipt around this primitive. Portable
+operation progress/admission/currency supply the owner facts; the ownership and
+integration boundaries described above remain separate work.
 Tests use local HTTP API servers and real typed clients, not a live cluster.
