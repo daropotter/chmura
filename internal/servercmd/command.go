@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/daropotter/chmura/internal/server"
+	"github.com/daropotter/chmura/internal/state"
 	"github.com/daropotter/chmura/internal/state/sqlite"
 	"github.com/daropotter/chmura/internal/version"
 )
@@ -44,7 +45,7 @@ func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			return err
 		},
 	})
-	root.AddCommand(newServeCmd())
+	root.AddCommand(newServeCmd(), newInitCmd())
 	root.SetArgs(args)
 	root.SetOut(stdout)
 	root.SetErr(stderr)
@@ -55,6 +56,9 @@ func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintln(stderr, "Error:", err)
 	if errors.Is(err, context.Canceled) {
 		return 130
+	}
+	if errors.Is(err, state.ErrConflict) {
+		return 3
 	}
 	var usage *usageError
 	if errors.As(err, &usage) || strings.HasPrefix(err.Error(), "unknown command") {

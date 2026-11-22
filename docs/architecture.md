@@ -110,8 +110,8 @@ exit. Existing records survive restarts. The parent directory must already
 exist; the operator owns file permissions and backups. Invalid paths or
 unsupported schema versions prevent startup. Without `--state`, discovery
 continues without a database. This does not create spaces, projects or an admin
-account, and does not enable deployment endpoints. Identity bootstrap and
-deployment operations follow in later increments.
+account, and does not enable deployment endpoints. Use the separate bootstrap
+command to create the first administrator.
 
 ### Installation bootstrap
 
@@ -124,15 +124,30 @@ chmura-agent    the cluster agent — its own artifact
 chmura          the CLI — installs and starts neither of the above
 ```
 
-On the control-plane host:
+On the control-plane host, prepare a private state directory and a private file
+containing a uniformly random 32-byte token encoded as 64 lowercase hexadecimal
+characters. For example, with OpenSSL:
 
 ```bash
-chmura-server init      # create the state DB and the first admin account
+(
+  umask 077
+  set -C
+  openssl rand -hex 32 > admin-token
+)
+chmura-server init --state /var/lib/chmura/state.db --admin alice \
+  --admin-token-file admin-token --idempotency-key first-admin
 ```
 
-From there the installation exists, and the only way to talk to it is the API. A
-node joins from **its own side** with a single-use token that carries its cluster
-and location — the control plane never reaches out to install anything:
+`init` opens or creates the state database and explicitly records one built-in
+administrator. It requires a regular token file with no group or other
+permissions. The database stores a SHA-256 digest of the token. Retrying with
+the same name, token and idempotency key succeeds with the same administrator.
+Changing any of those inputs returns state conflict (exit 3). Keep the token
+in a secure store. The HTTPS API currently exposes discovery. Token
+authentication and rotation follow in later increments.
+
+Once node enrollment is available, a node joins from **its own side** with a
+single-use token that carries its cluster and location:
 
 ```bash
 chmura-agent join --url https://chmura.company.example --token njt_...
