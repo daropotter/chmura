@@ -36,7 +36,7 @@ func (s *Store) Accept(ctx context.Context, request state.Submission) (state.Ope
 	if !errors.Is(err, sql.ErrNoRows) {
 		return state.Operation{}, false, fmt.Errorf("accept operation: %w", err)
 	}
-	operation, err = scanOperation(s.db.QueryRowContext(ctx, `SELECT `+operationColumns+` FROM operations WHERE scope = ? AND key_hash = ?`, request.Scope, keyHash))
+	operation, err = scanOperation(s.db.QueryRowContext(ctx, operationByKeyQuery, request.Scope, keyHash))
 	if err != nil {
 		return state.Operation{}, false, fmt.Errorf("read operation acceptance: %w", err)
 	}
@@ -59,6 +59,7 @@ func (s *Store) Get(ctx context.Context, scope, id string) (state.Operation, err
 }
 
 const operationColumns = "id, scope, kind, intent, status, version, result"
+const operationByKeyQuery = `SELECT ` + operationColumns + ` FROM operations WHERE scope = ? AND key_hash = ?`
 
 func scanOperation(row *sql.Row) (state.Operation, error) {
 	var op state.Operation

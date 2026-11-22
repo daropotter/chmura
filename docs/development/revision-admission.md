@@ -46,10 +46,10 @@ snapshots and operations, infers no head, and rolls back the chain on failure.
 Cancellation can outlast the SQLite busy timeout; a lost/canceled response can
 follow commit, so callers retry exactly rather than assuming rollback.
 
-This is an internal admission primitive. Snapshot creation, operation acceptance
-and starting that operation are explicit prior steps, outside this transaction.
-It supplies no worker lease, distributed fencing, rollback policy or rollout.
-The public API/CLI workflow and its full atomic acceptance boundary remain
-separate increments. Tests use temporary SQLite databases and independent
-handles, including stale/retained-base cases, historical retry, operation
-scope/progress, contention, storage failure, locked cancellation and migrations.
+For `AdmitRevision`, snapshot creation and starting the existing operation
+happen before admission. Use [deploy acceptance](deploy-acceptance.md) to create
+a snapshot, pending operation and desired selection together. Rollout and
+worker ownership are separate contracts. Tests use temporary SQLite databases
+and independent handles, including stale/retained-base cases, historical retry,
+operation scope/progress, contention, storage failure, locked cancellation and
+migrations.
