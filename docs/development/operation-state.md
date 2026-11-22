@@ -33,6 +33,8 @@ Version 5 adds immutable terminal process history. Restart admission/currency
 reuse these existing tables and operation progress; they add no migration.
 Version 6 adds the explicit, initially empty [cluster registry](cluster-state.md).
 Version 7 adds the [space registry](space-state.md), bound to existing clusters.
+Version 8 adds the [project registry](project-state.md), with names and creation
+keys scoped to an existing space.
 One connection per handle bounds local contention; independent handles still
 rely on database constraints, not a process mutex.
 Under a write lock, the driver may spend the busy timeout before returning the
