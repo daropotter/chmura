@@ -32,7 +32,9 @@ records and rolls back the chain on failure. Opening the database never creates
 a default cluster. The registry currently has no rename or delete method; those
 future changes must preserve creation receipts and stable identity.
 
-This is an internal persistence contract. Cluster API/CLI commands, spaces,
-projects, engine configuration and enrollment remain separate increments. Tests
-use temporary databases, independent handles and frozen migration fixtures,
-including terminal history preservation and migration-chain rollback.
+The [space registry](space-state.md) now uses existing cluster IDs and prevents
+orphan bindings. This is an internal persistence contract. Cluster API/CLI
+commands, projects, engine configuration and enrollment remain separate
+increments. Tests use temporary databases, independent handles and frozen
+migration fixtures, including terminal history preservation and migration-chain
+rollback.
