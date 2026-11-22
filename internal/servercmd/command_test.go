@@ -53,7 +53,8 @@ func TestCommandVersion(t *testing.T) {
 	}
 }
 
-func TestCommandServesHTTPS(t *testing.T) {
+func commandTLSFixture(t *testing.T) (string, string, *http.Client) {
+	t.Helper()
 	fixture := httptest.NewTLSServer(http.NotFoundHandler())
 	certificate := fixture.TLS.Certificates[0]
 	client := fixture.Client()
@@ -71,6 +72,11 @@ func TestCommandServesHTTPS(t *testing.T) {
 	if err := os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: key}), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	return certPath, keyPath, client
+}
+
+func TestCommandServesHTTPS(t *testing.T) {
+	certPath, keyPath, client := commandTLSFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	reader, writer := io.Pipe()

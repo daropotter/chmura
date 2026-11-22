@@ -1,8 +1,12 @@
 # Durable operation state
 
 `internal/state` defines portable submission and operation records.
-`internal/state/sqlite` is the initial single-mode persistence adapter. It is a
-library; the server does not open it or expose operation endpoints yet.
+`internal/state/sqlite` is the initial single-mode persistence adapter.
+`chmura-server serve --state /absolute/path/state.db` opens it explicitly after
+profile/TLS validation and before reporting a listening address, retaining the
+handle until shutdown. Initialization failure prevents readiness; the handle is
+also closed on later startup errors. Without the flag the server remains
+discovery-only, with no database. No operation endpoints are exposed yet.
 
 `Open` requires an explicit absolute disk path. It creates the database/schema,
 but no directories, spaces, projects or other domain objects. Paths are encoded
@@ -98,10 +102,10 @@ The [restart admission/current-operation contract](slot-generations.md#automatic
 now binds a closed predecessor to a running restart operation and its successor.
 The owner must validate private intent and terminal evidence, serialize execution
 and recheck currency before each step; recorded facts are not runtime permission.
-Engine-intent encoding, reconciliation/finalization, PostgreSQL/HA, typed query generation, server
-configuration, agent channel and API/CLI operations follow separately. The few
-SQL statements here are private to the SQLite adapter; portable state records
-contain no SQLite or Kubernetes types.
+Engine-intent encoding, reconciliation/finalization, PostgreSQL/HA, typed query
+generation, identity bootstrap, agent channel and API/CLI operations follow
+separately. The few SQL statements here are private to the SQLite adapter;
+portable state records contain no SQLite or Kubernetes types.
 
 Tests use real temporary disk databases, including reopen, independent handles,
 concurrent acceptance/progress, historical update replay, immutable terminal

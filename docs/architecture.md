@@ -95,8 +95,23 @@ chmura-server serve --tls-cert server.pem --tls-key server-key.pem
 It listens on `127.0.0.1:7443` by default; use `--listen` to choose another
 address, and `--profile dev` for a dev installation. TLS 1.3 and a certificate/key
 pair are required. Clients must trust the certificate's issuer. Interrupting the
-server drains requests before exiting. State bootstrap and deployment operations
-follow in later increments.
+server drains requests before exiting.
+
+Single-mode state is opt-in, with an explicit absolute database path:
+
+```bash
+chmura-server serve --tls-cert server.pem --tls-key server-key.pem \
+  --state /var/lib/chmura/state.db
+```
+
+The server opens or creates the database and initializes its schema before
+reporting its listening address, keeps it open while serving, and closes it on
+exit. Existing records survive restarts. The parent directory must already
+exist; the operator owns file permissions and backups. Invalid paths or
+unsupported schema versions prevent startup. Without `--state`, discovery
+continues without a database. This does not create spaces, projects or an admin
+account, and does not enable deployment endpoints. Identity bootstrap and
+deployment operations follow in later increments.
 
 ### Installation bootstrap
 
