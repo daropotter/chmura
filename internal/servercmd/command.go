@@ -92,6 +92,7 @@ func newServeCmd() *cobra.Command {
 					return err
 				}
 				defer func() { result = errors.Join(result, database.Close()) }()
+				server.RegisterDeployRoute(handler, database)
 			}
 			listener, err := net.Listen("tcp", address)
 			if err != nil {

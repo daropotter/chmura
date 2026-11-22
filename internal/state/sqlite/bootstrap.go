@@ -44,3 +44,22 @@ func (s *Store) BootstrapAdmin(ctx context.Context, request state.BootstrapAdmin
 	}
 	return admin, false, nil
 }
+
+// AuthenticateAdmin resolves the bootstrapped administrator for a token digest.
+// ErrNotFound covers both a missing administrator and a mismatched token.
+func (s *Store) AuthenticateAdmin(ctx context.Context, digest [32]byte) (state.Admin, error) {
+	var admin state.Admin
+	var storedDigest []byte
+	err := s.db.QueryRowContext(ctx, `SELECT id, name, token_hash FROM bootstrap_admin WHERE singleton = 1`).
+		Scan(&admin.ID, &admin.Name, &storedDigest)
+	if errors.Is(err, sql.ErrNoRows) {
+		return state.Admin{}, state.ErrNotFound
+	}
+	if err != nil {
+		return state.Admin{}, fmt.Errorf("read administrator verifier: %w", err)
+	}
+	if subtle.ConstantTimeCompare(storedDigest, digest[:]) != 1 {
+		return state.Admin{}, state.ErrNotFound
+	}
+	return admin, nil
+}
