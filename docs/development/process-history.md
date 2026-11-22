@@ -291,23 +291,55 @@ router's withdrawal of traffic. The caller must serialize ownership,
 admissions and runtime actions, and stop/drain any other reporters before acting.
 Terminal acknowledgement is neither ownership/fencing nor restart permission.
 
+## Serializing slot work in one process
+
+`supervision.SlotRunner` supplies process-local exclusion for exact scope/slot
+keys. Share one runner across all related owner actions; its zero value is ready
+to use and must not be copied after first use. `Run` calls an explicit callback
+synchronously with the supplied context. An occupied slot returns
+`state.ErrConflict` without running or queueing the competing callback. Different
+scopes/slots can progress independently. Invalid keys/callbacks and pre-canceled
+calls execute no work and reserve nothing.
+
+Keep the complete owner action inside `Run`, including monitor/reporting cleanup
+and required acknowledgements. Cancellation reaches the callback but does not
+release its slot. The callback must stop/join its monitors and drain reporters
+before returning; a stuck callback continues to exclude competing work. For
+`ResumeDurable`, this includes its detached finalization and worker joins, even
+when the parent was canceled or terminal storage committed before its reply.
+
+`Run` preserves the callback's returned error and lets panics unwind normally.
+The slot releases only after callback return/defer unwinding, including failure.
+Release acknowledges neither successful history persistence nor execution safety:
+the owner must inspect the outcome and recheck current authorized state before
+the next action. An unacknowledged drain still requires reconciliation. The
+runner chooses no generation, cancellation/retry policy or restart decision, and
+creates no workers, operations or runtime resources itself.
+
+This guard coordinates only callers sharing that runner in one process.
+Independent runners/processes and direct adapter/store calls do not participate.
+It is not durable ownership, a distributed lease or fencing; it does not replace
+the admission/current-generation checks or supply server/agent wiring. Losing
+the process does not grant a recovered worker permission to skip durable checks.
+
 ## Integration boundary
 
 ProcessReporter supplies bounded first-readiness queueing and acknowledgement,
 and PrepareProcessTerminal encodes verified outcomes for durable terminal writes.
 ResumeDurable orchestrates one monitor, its process-history worker and optional
-runtime-readiness publication. The surrounding owner lifecycle and
-failure/reconciliation policy remain owner work.
-This library acquires no execution ownership, fences no old workers and executes
-no restart. A terminal snapshot is retained history and can become stale with
-respect to the current desired head.
+runtime-readiness publication. SlotRunner can serialize complete owner actions
+locally. The surrounding owner lifecycle and failure/reconciliation policy
+remain owner work. These adapters acquire no distributed ownership or fencing.
+A terminal snapshot is retained history and can become stale with respect to
+the current desired head.
 
 The recovery read path, first-readiness acknowledgement and terminal adapter
 now form one durable supervision cycle with optional runtime-readiness publication.
 `PrepareProcessRestart` can recover an executor candidate from its canonical
 retained exit/healthy history without a live supervisor error; see
-[restart recovery](instance-restart.md#recovering-a-restart-request). Durable
-restart-operation admission/currency and surrounding owner lifecycle remain work.
-Agent/channel and API/CLI integration remain separate work. Tests use real
+[restart recovery](instance-restart.md#recovering-a-restart-request). The restart
+adapters now provide durable admission, execution and successor binding; the
+surrounding owner lifecycle/scheduler remains work. Agent/channel and API/CLI
+integration remain separate work. Tests use real
 temporary databases, virtual-time readiness, independent handles and fault
 injection; no live cluster or production database is accessed.
