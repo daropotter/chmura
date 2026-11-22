@@ -47,6 +47,17 @@ recheck its currency before each executor call. The evidence is not a full
 creation-intent record or a worker lease. The adapter does not read the desired
 head, fence another owner or deduplicate obsolete restart operations.
 
+The portable store now supplies [restart admission and current-operation
+checks](slot-generations.md#automatic-restart-admission-and-currency).
+The owner accepts/starts the canonical restart operation and calls `AdmitRestart`
+to append its successor only from an eligible current predecessor. Before each
+executor step, `GetCurrentRestart` must confirm the selected generation and
+running operation. Historical admission acknowledgement alone is insufficient.
+Completed/canceled, superseded or already-bound successor work conflicts before
+the owner invokes runtime I/O. A bound successor requires process/result
+reconciliation rather than rerunning creation. These checks do not fence races
+after the read; external serialization and scope/intent authorization remain.
+
 Tests persist/reopen terminal history, prepare without runtime calls and then
 explicitly authorize the existing executor in a local fixture: retirement must
 precede creation, and an exact retry after a lost creation reply recovers one
@@ -89,6 +100,7 @@ rather than an implicitly chosen retry policy.
 
 This is desired-resource reconciliation, not a permanent operation receipt:
 replaying an obsolete request could recreate a successor that was later deleted.
-Durable operation state, distributed ownership/fencing, restart scheduling,
+Portable operation progress/admission/currency now supply durable owner facts.
+Their engine-specific integration, distributed ownership/fencing, restart scheduling,
 container-ID discovery, agent wiring and API/CLI commands remain separate work.
 Tests use local HTTP API servers and real typed clients, not a live cluster.

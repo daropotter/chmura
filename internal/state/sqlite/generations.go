@@ -21,14 +21,14 @@ import (
 // A canceled/lost response can follow commit; retry the same request to recover.
 // Admission is not runtime execution permission, a lease or physical fencing.
 func (s *Store) AdmitGeneration(ctx context.Context, request state.GenerationRequest) (state.Generation, bool, error) {
-	generation, created, err := s.admitGeneration(ctx, request)
+	generation, created, err := s.admitGeneration(ctx, request, "")
 	if err != nil && ctx.Err() != nil {
 		return state.Generation{}, false, ctx.Err()
 	}
 	return generation, created, err
 }
 
-func (s *Store) admitGeneration(ctx context.Context, request state.GenerationRequest) (state.Generation, bool, error) {
+func (s *Store) admitGeneration(ctx context.Context, request state.GenerationRequest, restartPrevious string) (state.Generation, bool, error) {
 	if err := ctx.Err(); err != nil {
 		return state.Generation{}, false, err
 	}
@@ -51,6 +51,11 @@ func (s *Store) admitGeneration(ctx context.Context, request state.GenerationReq
 	if err == nil {
 		if stored.ID != request.ID || stored.OperationID != request.OperationID || stored.Version-1 != request.ExpectedVersion || !bytes.Equal(stored.Intent, request.Intent) {
 			return state.Generation{}, false, state.ErrConflict
+		}
+		if restartPrevious != "" {
+			if _, err := restartSnapshot(ctx, tx, stored, restartPrevious, false); err != nil {
+				return state.Generation{}, false, err
+			}
 		}
 		head, err := scanGeneration(tx.QueryRowContext(ctx, currentGenerationQuery, request.Scope, request.SlotID))
 		if err != nil {
@@ -78,6 +83,13 @@ func (s *Store) admitGeneration(ctx context.Context, request state.GenerationReq
 	}
 	if head.Version != request.ExpectedVersion {
 		return state.Generation{}, false, state.ErrConflict
+	}
+	if restartPrevious != "" {
+		candidate := state.Generation{Scope: request.Scope, SlotID: request.SlotID, ID: request.ID, OperationID: request.OperationID,
+			Version: request.ExpectedVersion + 1, Intent: request.Intent}
+		if _, err := restartSnapshot(ctx, tx, candidate, restartPrevious, true); err != nil {
+			return state.Generation{}, false, err
+		}
 	}
 	generation, err := scanGeneration(tx.QueryRowContext(ctx, `INSERT INTO generations (scope, slot_id, id, operation_id, key_hash, version, intent)
 		VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING `+generationColumns,
