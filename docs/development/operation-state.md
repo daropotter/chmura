@@ -31,6 +31,7 @@ Version 4 adds [exact process bindings and first-readiness history](process-hist
 without inferring runtime facts for existing generations.
 Version 5 adds immutable terminal process history. Restart admission/currency
 reuse these existing tables and operation progress; they add no migration.
+Version 6 adds the explicit, initially empty [cluster registry](cluster-state.md).
 One connection per handle bounds local contention; independent handles still
 rely on database constraints, not a process mutex.
 Under a write lock, the driver may spend the busy timeout before returning the

@@ -396,7 +396,7 @@ func TestTerminalMigrationPreservesProcessReceiptsAndRollsBackFailure(t *testing
 				t.Fatalf("migrated terminal: %#v %v %v", got, recorded, err)
 			}
 			var version int
-			if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 5 {
+			if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version < 5 {
 				t.Fatalf("schema version: %d %v", version, err)
 			}
 		})
