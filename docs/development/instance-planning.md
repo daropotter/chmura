@@ -2,8 +2,9 @@
 
 `internal/deployment.PlanInstance` builds a portable configuration snapshot for
 one explicitly selected application from a project validated by
-`manifest.Parse`. It is shared planning logic for future CLI/control-plane
-callers, before placement, runtime identity and resource creation.
+`manifest.Parse`. The [server deploy submission](deploy-acceptance.md#server-submission)
+uses it before recording a revision. The plan precedes placement, runtime
+identity and resource creation.
 
 The plan contains the declared project/application names, prebuilt image,
 declared ports, effective health configuration and an explicit readiness mode.
