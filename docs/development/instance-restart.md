@@ -107,6 +107,42 @@ snapshots do not fence a competing worker. Runtime and SQLite are not one atomic
 transaction. Distributed ownership, bound-result reconciliation for unfinished
 operations, scheduling and server/agent/API/CLI wiring remain separate increments.
 
+## Recovering the admission sequence
+
+`AdmitProcessRestart` composes the owner-side admission steps without runtime I/O.
+Its `ProcessRestartAdmission` supplies an explicit authorized scope/slot, retained
+predecessor ID/version, different successor generation ID, operation idempotency
+key, original creation request and explicit successor key/allocation. The adapter
+loads immutable predecessor/process history and verifies the canonical runtime
+identity and supported terminal evidence before accepting any operation. Invalid
+or missing source facts and changed restart declarations reserve no acceptance.
+The owner still verifies that the original creation intent belongs to that source.
+
+The adapter prepares the existing private v1 intent, accepts its `restart`
+operation, acknowledges `pending` → `running`, and calls `AdmitRestart` with the
+same intent. It reserves `restart-start-v1` within the operation and
+`restart-admit-v1/<operation-id>` within the slot; the store hashes these receipt
+keys. Different operations in the same slot therefore retain distinct admission
+receipts. Only matching scope/identity/intent/progress and successor/version
+acknowledgements expose a `RestartSelection`; errors/cancellation expose zero
+selection even after a write committed.
+
+Repeat the exact request after an ambiguous response or database reopen. Matching
+acceptance recovers the stable operation ID; already running work skips start.
+A succeeded operation can acknowledge its existing admission receipt after
+validating its stored creation result, but cannot freshly admit a generation.
+Failed/canceled work never resumes. An admission receipt returning a later head
+conflicts rather than selecting or restoring obsolete work. The returned selection
+is an admission acknowledgement: `EnsureAdmitted` still checks execution currency
+before every runtime step, and historical completion is not current existence.
+
+These are separate transactions. Acceptance or start can commit before admission
+fails, leaving a retained operation without a successor. The adapter does not
+silently compensate, mark failure, allocate resources, or choose retry/backoff
+policy. The surrounding owner reconciles permanent failures, authorizes intent,
+serializes admissions/runtime actions and drains reporters. No schema migration,
+distributed lease/fence or public API is added.
+
 ## Binding the completed successor
 
 `Resolver.BindRestartSuccessor` links a succeeded restart to its exact process
