@@ -37,9 +37,10 @@ migration chain. Existing cluster identities/creation receipts and operation
 history are preserved; migration failure rolls back the chain. There is no
 default space. Space creation allocates no project or runtime resources.
 
-This is an internal persistence contract. API/CLI commands, project registration
-and deployment remain separate increments. Cluster migration, rename and delete
-are not implemented; future changes must preserve stable identity and creation
-receipts. Tests use temporary databases, independent handles and frozen
-migration fixtures, including cross-cluster name/key races, foreign-key
-enforcement, reopen/replay and failure rollback.
+The [project registry](project-state.md) now uses existing space IDs and prevents
+orphan projects. This is an internal persistence contract. API/CLI commands,
+revision acceptance and deployment remain separate increments. Cluster migration,
+rename and delete are not implemented; future changes must preserve stable
+identity and creation receipts. Tests use temporary databases, independent
+handles and frozen migration fixtures, including cross-cluster name/key races,
+foreign-key enforcement, reopen/replay and failure rollback.
