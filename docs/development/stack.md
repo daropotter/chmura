@@ -40,8 +40,8 @@ for the settled choices is in the [engineering decisions](decisions.md).
 Single-mode operation acceptance now uses SQLite through the pure-Go
 `modernc.org/sqlite` driver, without changing the Go floor or CGO-free releases.
 The [initial state adapter](operation-state.md) owns its small private SQL
-surface; server integration, PostgreSQL/HA and typed query generation remain
-later increments.
+surface. The server can explicitly open it with `serve --state`; operation
+endpoints, PostgreSQL/HA and typed query generation remain later increments.
 
 See [Manifest validation](manifest-validation.md) for the currently implemented
 schema subset and parser guarantees.

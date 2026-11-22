@@ -8,11 +8,13 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/daropotter/chmura/internal/server"
+	"github.com/daropotter/chmura/internal/state/sqlite"
 	"github.com/daropotter/chmura/internal/version"
 )
 
@@ -62,12 +64,15 @@ func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 }
 
 func newServeCmd() *cobra.Command {
-	var address, profile, certFile, keyFile string
+	var address, profile, certFile, keyFile, statePath string
 	cmd := &cobra.Command{
 		Use: "serve", Short: "Serve the control-plane API over HTTPS", Args: noArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) (result error) {
 			if certFile == "" || keyFile == "" {
 				return &usageError{errors.New("serve requires --tls-cert and --tls-key")}
+			}
+			if cmd.Flags().Changed("state") && !filepath.IsAbs(statePath) {
+				return &usageError{errors.New("--state requires an absolute disk path")}
 			}
 			handler, err := server.NewHandler(profile)
 			if err != nil {
@@ -76,6 +81,13 @@ func newServeCmd() *cobra.Command {
 			certificate, err := tls.LoadX509KeyPair(certFile, keyFile)
 			if err != nil {
 				return fmt.Errorf("load TLS certificate: %w", err)
+			}
+			if cmd.Flags().Changed("state") {
+				database, err := sqlite.Open(cmd.Context(), statePath)
+				if err != nil {
+					return err
+				}
+				defer func() { result = errors.Join(result, database.Close()) }()
 			}
 			listener, err := net.Listen("tcp", address)
 			if err != nil {
@@ -92,5 +104,6 @@ func newServeCmd() *cobra.Command {
 	cmd.Flags().StringVar(&profile, "profile", "production", "installation profile: production or dev")
 	cmd.Flags().StringVar(&certFile, "tls-cert", "", "PEM certificate file")
 	cmd.Flags().StringVar(&keyFile, "tls-key", "", "PEM private key file")
+	cmd.Flags().StringVar(&statePath, "state", "", "Absolute path to the single-mode state database")
 	return cmd
 }
