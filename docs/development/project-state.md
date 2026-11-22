@@ -38,8 +38,10 @@ migration chain. Older cluster/space identities and creation receipts, plus
 operation history, are preserved; a failed migration rolls back the chain.
 Opening the database creates no default project.
 
-This is an internal persistence contract. Project API/CLI commands, manifest
-revision acceptance, deployment and rename/delete remain separate increments.
+The [revision store](revision-state.md) now retains immutable manifest snapshots
+under an existing project. This is an internal persistence contract. Project
+API/CLI commands, active-revision/deploy admission and rename/delete remain
+separate increments.
 Future mutations must preserve stable identity and creation receipts. Tests use
 temporary databases, independent handles and frozen migration fixtures,
 including space-scoped reads/replay, same-name/key independence across spaces,
