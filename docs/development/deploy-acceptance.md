@@ -26,3 +26,21 @@ and revision admission. The client key is stored only as a hash.
 Missing or foreign projects return `ErrNotFound`. A lost or canceled reply can
 follow commit, so clients retry the exact request. Starting the operation and
 tracking rollout progress belong to the execution workflow.
+
+## Server submission
+
+`server.SubmitDeploy` receives manifest YAML and an already authorized target.
+It parses the manifest with the shared validator, loads the project by space
+and project ID, and checks that the declared name matches the registered name.
+A name mismatch is a project identity conflict. The current milestone supports
+one application from a prebuilt image. The shared instance planner validates
+the image reference and resolves effective health settings before acceptance.
+
+The revision stores the normalized declaration using deterministic JSON-style
+YAML. This preserves quoted strings, YAML field names, and duration types.
+Changes that normalize to the same declaration, such as reordered mapping keys
+or equivalent durations, replay under the same key. The operation can read the
+saved revision to build its execution plan. The submission path performs
+portable planning. Image resolution, placement and engine capabilities are
+checked when preparing execution. The public HTTP layer will supply an
+authenticated caller and target authorization.
